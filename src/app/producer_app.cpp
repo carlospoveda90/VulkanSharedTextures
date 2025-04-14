@@ -8,6 +8,9 @@
 #include <thread>
 #include <unistd.h>
 #include "utils/logger.hpp"
+#include "shm/shm_writer.hpp"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 namespace vst
 {
@@ -67,14 +70,36 @@ namespace vst
             int client_fd = accept(server_fd, nullptr, nullptr);
             if (client_fd >= 0)
             {
-                // ipc::send_fd_with_info(client_fd, fd, texture.width, texture.height);
-                // uint32_t stride = texture.width * 4; // Assuming VK_FORMAT_R8G8B8A8_UNORM
                 vst::ipc::send_fd_with_info(client_fd, fd, texture.width, texture.height);
                 LOG_INFO("Sent FD to consumer via Unix socket.");
                 close(client_fd);
             }
             close(server_fd); })
                 .detach();
+        }
+        else if (mode == "shm")
+        {
+            // Create shared memory segment
+            LOG_INFO("Running in shm_open mode...");
+
+            int texWidth, texHeight, texChannels;
+            stbi_uc *pixels = stbi_load(imagePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+            if (!pixels)
+                throw std::runtime_error("Failed to load image for shm.");
+
+            size_t imageSize = texWidth * texHeight * 4;
+            bool success = vst::shm::write_to_shm("/tmp/vst_shared_texture", pixels, imageSize);
+            stbi_image_free(pixels);
+
+            if (!success)
+                throw std::runtime_error("Failed to write image to shared memory.");
+
+            LOG_INFO("Image written to shared memory: /tmp/vst_shared_texture");
+            return;
+        }
+        else
+        {
+            throw std::runtime_error("Invalid mode. Use 'dmabuf' or 'shm'.");
         }
     }
 

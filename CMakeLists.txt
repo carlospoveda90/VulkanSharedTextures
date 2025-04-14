@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
+find_package(SDL3 REQUIRED)
 
 # stb_image for image loading
 include(FetchContent)
@@ -58,7 +59,9 @@ add_executable(vst_consumer
     src/ipc/fd_passing.cpp
 )
 target_include_directories(vst_consumer PRIVATE include)
+target_link_libraries(vst_consumer PRIVATE SDL3::SDL3)
 target_link_libraries(vst_consumer Vulkan::Vulkan glfw glm pthread)
+
 
 # Find glslangValidator
 find_program(GLSL_VALIDATOR glslangValidator HINTS /usr/bin /usr/local/bin $ENV{VULKAN_SDK}/bin)

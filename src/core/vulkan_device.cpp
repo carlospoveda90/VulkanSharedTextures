@@ -2,9 +2,6 @@
 #include "utils/logger.hpp"
 #include <stdexcept>
 #include <vector>
-
-// PFN_vkGetMemoryFdKHR vkGetMemoryFdKHR = nullptr;
-
 namespace vst
 {
     const std::vector<const char *> requiredDeviceExtensions = {
@@ -87,13 +84,6 @@ namespace vst
 
         createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtensions.size());
         createInfo.ppEnabledExtensionNames = requiredDeviceExtensions.data();
-
-        // vkGetMemoryFdKHR = reinterpret_cast<PFN_vkGetMemoryFdKHR>(vkGetDeviceProcAddr(device, "vkGetMemoryFdKHR"));
-
-        // if (!vkGetMemoryFdKHR)
-        // {
-        //     throw std::runtime_error("vkGetMemoryFdKHR not available. Extension VK_KHR_external_memory_fd may not be supported.");
-        // }
 
         if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
         {

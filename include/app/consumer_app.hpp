@@ -11,7 +11,7 @@ namespace vst
     class ConsumerApp
     {
     public:
-        ConsumerApp(GLFWwindow *window);
+        ConsumerApp(GLFWwindow *window, const std::string &mode);
         ~ConsumerApp();
 
         void runFrame();
