@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include "utils/logger.hpp"
 #include "shm/shm_writer.hpp"
-#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 namespace vst
@@ -19,33 +18,31 @@ namespace vst
 
     ProducerApp::ProducerApp(GLFWwindow *window, const std::string &imagePath, const std::string &mode)
     {
-
-        context.init(window);
-
-        texture = ImageLoader::loadTexture(
-            imagePath,
-            context.getDevice(),
-            context.getPhysicalDevice(),
-            context.getCommandPool(),
-            context.getGraphicsQueue(),
-            mode == "dmabuf" // exportMemory = true if using DMA-BUF
-        );
-
-        // Setup pipeline and rendering resources
-        createDescriptorPool(context.getDevice(), descriptorPool);
-        descriptorManager.init(context.getDevice(), descriptorPool, texture);
-        pipeline.create(context.getDevice(), context.getSwapchainExtent(), context.getRenderPass(), descriptorManager.getLayout());
-
-        createVertexBuffer(
-            context.getDevice(),
-            context.getPhysicalDevice(),
-            vertexBuffer,
-            vertexBufferMemory,
-            FULLSCREEN_QUAD);
-
         // Export FD and wait for connection (background thread)
-        if (mode == "dmabuf")
+        if (mode == "dma")
         {
+            context.init(window);
+
+            texture = ImageLoader::loadTexture(
+                imagePath,
+                context.getDevice(),
+                context.getPhysicalDevice(),
+                context.getCommandPool(),
+                context.getGraphicsQueue(),
+                mode == "dma" // exportMemory = true if using DMA-BUF
+            );
+
+            // Setup pipeline and rendering resources
+            createDescriptorPool(context.getDevice(), descriptorPool);
+            descriptorManager.init(context.getDevice(), descriptorPool, texture);
+            pipeline.create(context.getDevice(), context.getSwapchainExtent(), context.getRenderPass(), descriptorManager.getLayout());
+
+            createVertexBuffer(
+                context.getDevice(),
+                context.getPhysicalDevice(),
+                vertexBuffer,
+                vertexBufferMemory,
+                FULLSCREEN_QUAD);
             VkMemoryGetFdInfoKHR getFdInfo{VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR};
             getFdInfo.memory = texture.memory;
             getFdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
@@ -88,18 +85,18 @@ namespace vst
                 throw std::runtime_error("Failed to load image for shm.");
 
             size_t imageSize = texWidth * texHeight * 4;
-            bool success = vst::shm::write_to_shm("/tmp/vst_shared_texture", pixels, imageSize);
+            bool success = vst::shm::write_to_shm("/vst_shared_texture", pixels, imageSize);
             stbi_image_free(pixels);
 
             if (!success)
                 throw std::runtime_error("Failed to write image to shared memory.");
 
-            LOG_INFO("Image written to shared memory: /tmp/vst_shared_texture");
+            LOG_INFO("Image written to shared memory: /vst_shared_texture");
             return;
         }
         else
         {
-            throw std::runtime_error("Invalid mode. Use 'dmabuf' or 'shm'.");
+            throw std::runtime_error("Invalid mode. Use 'dma' or 'shm'.");
         }
     }
 
@@ -163,13 +160,24 @@ namespace vst
         vkUnmapMemory(device, memory);
     }
 
-    void ProducerApp::runFrame()
+    void ProducerApp::runFrame(const std::string &mode)
     {
-        context.drawFrame(
-            pipeline.get(),
-            pipeline.getLayout(),
-            descriptorManager.getDescriptorSet(),
-            vertexBuffer);
+        if (mode == "dma")
+        {
+            context.drawFrame(
+                pipeline.get(),
+                pipeline.getLayout(),
+                descriptorManager.getDescriptorSet(),
+                vertexBuffer);
+        }
+        else if (mode == "shm")
+        {
+            LOG_INFO("Chupelo: " + mode);
+        }
+        else
+        {
+            throw std::runtime_error("Invalid frame mode. Use 'dma' or 'shm'.");
+        }
     }
 
     void ProducerApp::cleanup()

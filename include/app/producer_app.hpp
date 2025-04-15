@@ -15,7 +15,7 @@ namespace vst
         ProducerApp(GLFWwindow *window, const std::string &imagePath, const std::string &mode);
         ~ProducerApp();
 
-        void runFrame();
+        void runFrame(const std::string &mode);
         void cleanup();
 
     private:

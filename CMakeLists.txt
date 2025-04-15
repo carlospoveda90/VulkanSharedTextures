@@ -35,6 +35,7 @@ target_sources(vst_producer PRIVATE
     src/core/vulkan_device.cpp
     src/core/swapchain.cpp
     src/app/producer_app.cpp
+    src/shm/shm_writer.cpp
     src/media/image_loader.cpp
     src/media/stb_image.cpp
     src/core/pipeline.cpp
@@ -50,6 +51,8 @@ target_sources(vst_producer PRIVATE
 add_executable(vst_consumer
     src/consumer/main.cpp
     src/app/consumer_app.cpp
+    src/shm/shm_viewer.cpp
+    src/utils/mode_probe.cpp
     src/core/descriptor_manager.cpp
     src/core/pipeline.cpp
     src/core/vertex_definitions.cpp
@@ -59,8 +62,7 @@ add_executable(vst_consumer
     src/ipc/fd_passing.cpp
 )
 target_include_directories(vst_consumer PRIVATE include)
-target_link_libraries(vst_consumer PRIVATE SDL3::SDL3)
-target_link_libraries(vst_consumer Vulkan::Vulkan glfw glm pthread)
+target_link_libraries(vst_consumer Vulkan::Vulkan SDL3::SDL3 glfw glm pthread)
 
 
 # Find glslangValidator

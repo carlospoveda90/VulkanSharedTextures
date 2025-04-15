@@ -8,12 +8,12 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        std::cerr << "Usage: ./vst_producer <image_path> [--mode=shm|dmabuf]\n";
+        std::cerr << "Usage: ./vst_producer <image_path> [--mode=shm|dma]\n";
         return -1;
     }
 
     std::string imagePath;
-    std::string mode = "dmabuf"; // Default
+    std::string mode = "dma"; // Default
 
     for (int i = 1; i < argc; ++i)
     {
@@ -34,9 +34,9 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    if (mode != "shm" && mode != "dmabuf")
+    if (mode != "shm" && mode != "dma")
     {
-        std::cerr << "Invalid mode: use --mode=shm or --mode=dmabuf\n";
+        std::cerr << "Invalid mode: use --mode=shm or --mode=dma\n";
         return -1;
     }
 
@@ -63,7 +63,7 @@ int main(int argc, char **argv)
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
-        app.runFrame();
+        app.runFrame(mode);
     }
 
     glfwDestroyWindow(window);

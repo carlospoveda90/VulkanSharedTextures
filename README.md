@@ -39,5 +39,5 @@ mkdir build && cd build
 cmake ..
 make -j$(nproc)
 
-./vst_producer ~/PATH/TO/IMAGE --mode=(dmabuf|shm)
+./vst_producer ~/PATH/TO/IMAGE --mode=(dma|shm)
 ./vst_consumer

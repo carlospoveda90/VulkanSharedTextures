@@ -53,7 +53,7 @@ namespace vst
 
     ConsumerApp::ConsumerApp(GLFWwindow *window, const std::string &mode)
     {
-        if (mode == "dmabuf")
+        if (mode == "dma")
         {
             context.init(window);
             // === Socket: Receive FD from Producer ===
@@ -242,10 +242,10 @@ namespace vst
 
             LOG_INFO("DMA-BUF imported and image view created successfully.");
         }
-        else if (mode == "shm_opt")
+        else if (mode == "shm")
         {
             LOG_INFO("Running shm_open consumer...");
-            vst::shm::run_viewer("/tmp/vst_shared_texture", 1280, 720); // Replace dims with actual or socket-received ones
+            vst::shm::run_viewer("/vst_shared_texture", 1280, 720); // Replace dims with actual or socket-received ones
             return;
         }
         else
