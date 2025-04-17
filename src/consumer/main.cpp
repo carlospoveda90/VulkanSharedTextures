@@ -1,6 +1,7 @@
 #include "app/consumer_app.hpp"
 #include "utils/logger.hpp"
 #include "utils/mode_probe.hpp"
+#include "utils/file_utils.hpp"
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <string>
@@ -14,7 +15,9 @@ int main(int argc, char **argv)
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow *window = glfwCreateWindow(800, 600, "Vulkan Consumer", nullptr, nullptr);
+    // vst::utils::ImageSize imageSize = vst::utils::getImageSize("/dev/shm/vst_shared_texture");
+
+    GLFWwindow *window = glfwCreateWindow(800, 600, "Consumer DMA-BUF", nullptr, nullptr);
     if (!window)
     {
         LOG_ERR("Failed to create GLFW window.");

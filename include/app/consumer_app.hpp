@@ -7,7 +7,6 @@
 
 namespace vst
 {
-
     class ConsumerApp
     {
     public:

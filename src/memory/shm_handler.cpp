@@ -32,6 +32,14 @@ namespace vst
     void *ShmHandler::mapShm(const std::string &name, size_t size)
     {
         int fd = shm_open(name.c_str(), O_RDWR, 0666);
+        
+        // std::cout << "fd: " << fd << std::endl;
+        // std::cout<<"name: " << name << std::endl;
+        // std::cout<<"size: " << size << std::endl;
+        // std::cout<<"O_RDWR: " << O_RDWR << std::endl;
+        // std::cout<<"0666: " << 0666 << std::endl;
+        // std::cout<<"shm_open: " << shm_open(name.c_str(), O_RDWR, 0666) << std::endl;
+        
         if (fd == -1)
         {
             throw std::runtime_error("Failed to open shared memory: " + name);

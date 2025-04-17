@@ -245,7 +245,7 @@ namespace vst
         else if (mode == "shm")
         {
             LOG_INFO("Running shm_open consumer...");
-            vst::shm::run_viewer("/vst_shared_texture", 1280, 720); // Replace dims with actual or socket-received ones
+            vst::shm::run_viewer("/vst_shared_texture", "Consumer");
             return;
         }
         else

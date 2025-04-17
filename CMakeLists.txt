@@ -9,6 +9,7 @@ find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(SDL3 REQUIRED)
+find_package(SDL3_image REQUIRED)
 
 # stb_image for image loading
 include(FetchContent)
@@ -27,7 +28,7 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 add_executable(vst_producer 
         src/producer/main.cpp
         src/core/vulkan_context.cpp)
-target_link_libraries(vst_producer Vulkan::Vulkan glfw glm pthread)
+target_link_libraries(vst_producer Vulkan::Vulkan SDL3::SDL3 SDL3_image::SDL3_image glfw glm pthread)
 target_include_directories(vst_producer PRIVATE include)
 target_sources(vst_producer PRIVATE
     src/producer/main.cpp
@@ -36,22 +37,30 @@ target_sources(vst_producer PRIVATE
     src/core/swapchain.cpp
     src/app/producer_app.cpp
     src/shm/shm_writer.cpp
+    src/shm/shm_viewer.cpp
     src/media/image_loader.cpp
     src/media/stb_image.cpp
     src/core/pipeline.cpp
     src/core/descriptor_manager.cpp
     src/core/vertex_definitions.cpp
     src/tools/benchmark.cpp
+    src/utils/file_utils.cpp
     src/memory/shm_handler.cpp
     src/memory/download_texture.cpp
     src/ipc/fd_passing.cpp
+    src/window/glfw_window.cpp
+    src/window/sdl_window.cpp
 )
 
 # Consumer
 add_executable(vst_consumer
     src/consumer/main.cpp
     src/app/consumer_app.cpp
+    src/shm/shm_writer.cpp
     src/shm/shm_viewer.cpp
+    src/utils/file_utils.cpp
+    src/media/image_loader.cpp
+    src/media/stb_image.cpp
     src/utils/mode_probe.cpp
     src/core/descriptor_manager.cpp
     src/core/pipeline.cpp
@@ -62,7 +71,7 @@ add_executable(vst_consumer
     src/ipc/fd_passing.cpp
 )
 target_include_directories(vst_consumer PRIVATE include)
-target_link_libraries(vst_consumer Vulkan::Vulkan SDL3::SDL3 glfw glm pthread)
+target_link_libraries(vst_consumer Vulkan::Vulkan SDL3::SDL3 SDL3_image::SDL3_image glfw glm pthread)
 
 
 # Find glslangValidator

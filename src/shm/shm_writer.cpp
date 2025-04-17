@@ -1,14 +1,17 @@
 #include "shm/shm_writer.hpp"
+#include "memory/shm_handler.hpp"
+#include "utils/file_utils.hpp"
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <cstring>
 #include <iostream>
+#include <cstdint>
 
 namespace vst::shm
 {
 
-    bool write_to_shm(const std::string &shmName, const void *data, size_t size)
+    bool write_to_shm(const std::string &shmName, vst::utils::ImageSize imageData, const void *data, size_t size)
     {
         int fd = shm_open(shmName.c_str(), O_CREAT | O_RDWR, 0666);
         if (fd < 0)

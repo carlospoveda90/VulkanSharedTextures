@@ -7,9 +7,14 @@
 #include "ipc/fd_passing.hpp"
 #include <thread>
 #include <unistd.h>
+#include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
 #include "utils/logger.hpp"
 #include "shm/shm_writer.hpp"
+#include "shm/shm_viewer.hpp"
+#include "memory/shm_handler.hpp"
 #include "stb_image.h"
+#include "utils/file_utils.hpp"
 
 namespace vst
 {
@@ -18,9 +23,15 @@ namespace vst
 
     ProducerApp::ProducerApp(GLFWwindow *window, const std::string &imagePath, const std::string &mode)
     {
-        // Export FD and wait for connection (background thread)
-        if (mode == "dma")
+        this->mode = mode;
+        if (this->mode != "shm" && this->mode != "dma")
         {
+            throw std::runtime_error("Invalid mode. Use 'shm' or 'dma'.");
+        }
+        // Export FD and wait for connection (background thread)
+        if (this->mode == "dma")
+        {
+            // Initialize Vulkan context
             context.init(window);
 
             texture = ImageLoader::loadTexture(
@@ -29,8 +40,7 @@ namespace vst
                 context.getPhysicalDevice(),
                 context.getCommandPool(),
                 context.getGraphicsQueue(),
-                mode == "dma" // exportMemory = true if using DMA-BUF
-            );
+                mode == "dma");
 
             // Setup pipeline and rendering resources
             createDescriptorPool(context.getDevice(), descriptorPool);
@@ -74,24 +84,41 @@ namespace vst
             close(server_fd); })
                 .detach();
         }
-        else if (mode == "shm")
+        else
         {
+            throw std::runtime_error("Invalid mode. Use 'dma' or 'shm'.");
+        }
+    }
+    ProducerApp::ProducerApp(const std::string &imagePath, const std::string &mode)
+    {
+        this->mode = mode;
+        LOG_INFO("ProducerApp constructor called with imagePath: " + imagePath + " and mode: " + mode);
+        if (this->mode == "shm")
+        {
+            vst::utils::ImageSize imageData = vst::utils::getImageSize(imagePath);
             // Create shared memory segment
             LOG_INFO("Running in shm_open mode...");
 
             int texWidth, texHeight, texChannels;
             stbi_uc *pixels = stbi_load(imagePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+
+            LOG_INFO("width: " + std::to_string(texWidth) + ", height: " + std::to_string(texHeight) + ", channels: " + std::to_string(texChannels));
+
             if (!pixels)
                 throw std::runtime_error("Failed to load image for shm.");
 
+            std::string shmNameSize = "/vst_shared_texture-" + std::to_string(imageData.width) + "x" + std::to_string(imageData.height);
+            LOG_INFO("Creating shared memory segment: " + shmNameSize);
+
             size_t imageSize = texWidth * texHeight * 4;
-            bool success = vst::shm::write_to_shm("/vst_shared_texture", pixels, imageSize);
-            stbi_image_free(pixels);
+            bool success = vst::shm::write_to_shm(shmNameSize, imageData, pixels, imageSize);
+            stbi_image_free(pixels); // Feel free the loaded image data
 
             if (!success)
                 throw std::runtime_error("Failed to write image to shared memory.");
 
-            LOG_INFO("Image written to shared memory: /vst_shared_texture");
+            LOG_INFO("Image written to shared memory: /dev/shm" + shmNameSize);
+
             return;
         }
         else
@@ -160,34 +187,44 @@ namespace vst
         vkUnmapMemory(device, memory);
     }
 
-    void ProducerApp::runFrame(const std::string &mode)
+    void ProducerApp::runFrame()
     {
-        if (mode == "dma")
-        {
-            context.drawFrame(
-                pipeline.get(),
-                pipeline.getLayout(),
-                descriptorManager.getDescriptorSet(),
-                vertexBuffer);
-        }
-        else if (mode == "shm")
-        {
-            LOG_INFO("Chupelo: " + mode);
-        }
-        else
-        {
-            throw std::runtime_error("Invalid frame mode. Use 'dma' or 'shm'.");
-        }
+        context.drawFrame(
+            pipeline.get(),
+            pipeline.getLayout(),
+            descriptorManager.getDescriptorSet(),
+            vertexBuffer);
+    }
+
+    void ProducerApp::runFrame(const std::string &imagePath)
+    {
+        LOG_INFO("Running shm_open producer");
+        vst::utils::ImageSize imageData = vst::utils::getImageSize(imagePath);
+        LOG_INFO("Image size: " + std::to_string(imageData.width) + "x" + std::to_string(imageData.height));
+        std::string shmNameSize = "/vst_shared_texture-" + std::to_string(imageData.width) + "x" + std::to_string(imageData.height);
+        vst::shm::run_viewer(shmNameSize.c_str(), "Producer");
     }
 
     void ProducerApp::cleanup()
     {
-        vkDestroyBuffer(context.getDevice(), vertexBuffer, nullptr);
-        vkFreeMemory(context.getDevice(), vertexBufferMemory, nullptr);
-        descriptorManager.cleanup(context.getDevice());
-        pipeline.cleanup(context.getDevice());
-        vkDestroyDescriptorPool(context.getDevice(), descriptorPool, nullptr);
-        context.cleanup();
+        if (this->mode == "dma")
+        {
+            vkDestroyBuffer(context.getDevice(), vertexBuffer, nullptr);
+            vkFreeMemory(context.getDevice(), vertexBufferMemory, nullptr);
+            descriptorManager.cleanup(context.getDevice());
+            pipeline.cleanup(context.getDevice());
+            vkDestroyDescriptorPool(context.getDevice(), descriptorPool, nullptr);
+            context.cleanup();
+        }
+        else if (this->mode == "shm")
+        {
+            // Cleanup shared memory resources if needed
+            LOG_INFO("Cleaning up shared memory resources...");
+        }
+        else
+        {
+            throw std::runtime_error("Invalid cleanup mode. Use 'dma' or 'shm'.");
+        }
     }
 
     ProducerApp::~ProducerApp()
@@ -195,4 +232,4 @@ namespace vst
         cleanup();
     }
 
-}
+} // namespace vst
