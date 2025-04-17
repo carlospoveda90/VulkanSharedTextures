@@ -202,6 +202,7 @@ namespace vst
         vst::utils::ImageSize imageData = vst::utils::getImageSize(imagePath);
         LOG_INFO("Image size: " + std::to_string(imageData.width) + "x" + std::to_string(imageData.height));
         std::string shmNameSize = "/vst_shared_texture-" + std::to_string(imageData.width) + "x" + std::to_string(imageData.height);
+        this->shmName = shmNameSize;
         vst::shm::run_viewer(shmNameSize.c_str(), "Producer");
     }
 
@@ -219,7 +220,8 @@ namespace vst
         else if (this->mode == "shm")
         {
             // Cleanup shared memory resources if needed
-            LOG_INFO("Cleaning up shared memory resources...");
+            LOG_INFO("Cleaning up SHM resources...");
+            vst::shm::destroy_viewer(this->shmName);
         }
         else
         {

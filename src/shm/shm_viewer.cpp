@@ -8,6 +8,9 @@
 
 namespace vst::shm
 {
+    SDL_Window *window = nullptr;
+    SDL_Renderer *renderer = nullptr;
+    SDL_Texture *texture = nullptr;
 
     // void run_viewer(const char *shmName, int width, int height)
     void run_viewer(const char *shmName, const std::string &owner)
@@ -38,10 +41,9 @@ namespace vst::shm
             return;
         }
 
-        SDL_Window *window = SDL_CreateWindow(("SHM Viewer " + owner).c_str(), imageData.width, imageData.height, SDL_WINDOW_RESIZABLE);
-        // SDL_Renderer *renderer = SDL_CreateRenderer(window, nullptr, 0);
-        SDL_Renderer *renderer = SDL_CreateRenderer(window, nullptr);
-        SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, imageData.width, imageData.height);
+        window = SDL_CreateWindow(("SHM Viewer " + owner).c_str(), imageData.width, imageData.height, SDL_WINDOW_RESIZABLE);
+        renderer = SDL_CreateRenderer(window, nullptr);
+        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, imageData.width, imageData.height);
 
         bool running = true;
         SDL_Event e;
@@ -62,10 +64,36 @@ namespace vst::shm
 
         munmap(data, imageSize);
         close(shm_fd);
-        SDL_DestroyTexture(texture);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
+        // SDL_DestroyTexture(texture);
+        // SDL_DestroyRenderer(renderer);
+        // SDL_DestroyWindow(window);
+        // SDL_Quit();
+    }
+
+    void destroy_viewer(const std::string &shmName)
+    {
+        if (texture)
+        {
+            SDL_DestroyTexture(texture);
+            texture = nullptr;
+        }
+        if (renderer)
+        {
+            SDL_DestroyRenderer(renderer);
+            renderer = nullptr;
+        }
+        if (window)
+        {
+            SDL_DestroyWindow(window);
+            window = nullptr;
+        }
         SDL_Quit();
+
+        if (!shmName.empty())
+        {
+            shm_unlink(shmName.c_str());
+            std::cout << "[INFO] Unlinked SHM file: " << shmName << std::endl;
+        }
     }
 
 } // namespace vst::shm

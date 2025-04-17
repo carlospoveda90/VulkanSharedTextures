@@ -15,25 +15,57 @@ int main(int argc, char **argv)
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    // vst::utils::ImageSize imageSize = vst::utils::getImageSize("/dev/shm/vst_shared_texture");
 
-    GLFWwindow *window = glfwCreateWindow(800, 600, "Consumer DMA-BUF", nullptr, nullptr);
-    if (!window)
+    std::optional<std::string> mediaPath;
+    int width = 0, height = 0;
+    std::string mode = vst::utils::detect_producer_mode();
+    if (mode == "shm")
     {
-        LOG_ERR("Failed to create GLFW window.");
+        mediaPath = vst::utils::findLatestShmFile();
+        if (mediaPath)
+        {
+            auto dims = vst::utils::parseImageDimensions(*mediaPath);
+            width = dims.width;
+            height = dims.height;
+            LOG_INFO("[SHM] Detected image dimensions: " + std::to_string(width) + "x" + std::to_string(height));
+        }
+
+        vst::ConsumerApp app(mode);
+    }
+    else if (mode == "dma")
+    {
+        mediaPath = vst::utils::findLatestDmaSocket();
+        if (mediaPath)
+        {
+            auto dims = vst::utils::parseImageDimensions(*mediaPath);
+            width = dims.width;
+            height = dims.height;
+            LOG_INFO("[DMA] Detected image dimensions: " + std::to_string(width) + "x" + std::to_string(height));
+        }
+
+        GLFWwindow *window = glfwCreateWindow(width, height, "Consumer DMA-BUF", nullptr, nullptr);
+        if (!window)
+        {
+            LOG_ERR("Failed to create GLFW window.");
+            glfwTerminate();
+            return -1;
+        }
+
+        vst::ConsumerApp app(window, mode);
+
+        while (!glfwWindowShouldClose(window))
+        {
+            glfwPollEvents();
+            app.runFrame();
+        }
+
+        glfwDestroyWindow(window);
         glfwTerminate();
+        return 0;
+    }
+    else
+    {
+        LOG_ERR("Unknown mode: " + mode);
         return -1;
     }
-    std::string mode = vst::utils::detect_producer_mode();
-    vst::ConsumerApp app(window, mode);
-
-    while (!glfwWindowShouldClose(window))
-    {
-        glfwPollEvents();
-        app.runFrame();
-    }
-
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    return 0;
 }

@@ -27,6 +27,7 @@ namespace vst
         Texture texture;
         Pipeline pipeline;
         std::string mode;
+        std::string shmName;
 
         VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
         DescriptorManager descriptorManager;

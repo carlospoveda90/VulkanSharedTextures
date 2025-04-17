@@ -1,4 +1,5 @@
 #include "utils/mode_probe.hpp"
+#include "utils/file_utils.hpp"
 #include <sys/stat.h>
 #include <stdexcept>
 
@@ -7,19 +8,24 @@ namespace vst::utils
 
     std::string detect_producer_mode()
     {
-        struct stat sb;
+        auto pathOpt = find_shared_image_file(); // from earlier utility
+        if (!pathOpt.has_value())
+        {
+            throw std::runtime_error("Failed to detect producer mode: no known resources found.");
+        }
 
-        if (stat("/tmp/vulkan_shared.sock", &sb) == 0 && S_ISSOCK(sb.st_mode))
+        const std::string &path = *pathOpt;
+
+        if (path.find("/dev/shm/") == 0)
+        {
+            return "shm";
+        }
+        else if (path.find("/tmp/") == 0)
         {
             return "dma";
         }
 
-        if (stat("/dev/shm/vst_shared_texture", &sb) == 0)
-        {
-            return "shm";
-        }
-
-        throw std::runtime_error("Failed to detect producer mode: no known resources found.");
+        throw std::runtime_error("Unknown producer resource path: " + path);
     }
 
 } // namespace vst::utils

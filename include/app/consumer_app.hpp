@@ -10,6 +10,7 @@ namespace vst
     class ConsumerApp
     {
     public:
+        ConsumerApp(const std::string &mode);
         ConsumerApp(GLFWwindow *window, const std::string &mode);
         ~ConsumerApp();
 
@@ -29,6 +30,8 @@ namespace vst
         VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
         DescriptorManager descriptorManager;
         Pipeline pipeline;
+        std::string mode;
+        std::string shmName;
 
         VkBuffer vertexBuffer = VK_NULL_HANDLE;
         VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;

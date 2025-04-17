@@ -5,6 +5,9 @@
 #include <sstream>
 #include <cstdint>
 #include <stb_image.h>
+#include <optional>
+#include <regex>
+#include <filesystem>
 
 namespace vst::utils
 {
@@ -48,6 +51,66 @@ namespace vst::utils
         if (lastDot == std::string::npos)
             return "";
         return path.substr(lastDot + 1);
+    }
+
+    std::optional<std::string> findLatestShmFile()
+    {
+        std::string prefix = "/dev/shm/vst_shared_texture-";
+        std::regex pattern("vst_shared_texture-(\\d+)x(\\d+)");
+
+        for (const auto &entry : std::filesystem::directory_iterator("/dev/shm"))
+        {
+            const std::string name = entry.path().filename().string();
+            if (std::regex_match(name, pattern))
+            {
+                return prefix + name.substr(std::string("vst_shared_texture-").length());
+            }
+        }
+        return std::nullopt; // not found
+    }
+
+    std::optional<std::string> findLatestDmaSocket()
+    {
+        std::string prefix = "/tmp/vulkan_socket-";
+        std::regex pattern("vulkan_socket-(\\d+)x(\\d+)");
+
+        for (const auto &entry : std::filesystem::directory_iterator("/tmp"))
+        {
+            const std::string name = entry.path().filename().string();
+            if (std::regex_match(name, pattern))
+            {
+                return prefix + name.substr(std::string("vulkan_socket-").length());
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<std::string> find_shared_image_file()
+    {
+        const std::regex shmPattern("vst_shared_texture-(\\d+)x(\\d+)");
+        const std::regex dmaPattern("vulkan_socket-(\\d+)x(\\d+)");
+
+        // Check SHM in /dev/shm
+        for (const auto &entry : std::filesystem::directory_iterator("/dev/shm"))
+        {
+            const std::string name = entry.path().filename().string();
+            if (std::regex_match(name, shmPattern))
+            {
+                return std::string("/dev/shm/") + name;
+            }
+        }
+
+        // Check DMA socket in /tmp
+        for (const auto &entry : std::filesystem::directory_iterator("/tmp"))
+        {
+            const std::string name = entry.path().filename().string();
+            if (std::regex_match(name, dmaPattern))
+            {
+                return std::string("/tmp/") + name;
+            }
+        }
+
+        return std::nullopt;
     }
 
 } // namespace vst::utils
