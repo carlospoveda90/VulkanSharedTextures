@@ -1,3 +1,5 @@
+#include <thread>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <cstring>
 #include "app/producer_app.hpp"
@@ -5,10 +7,6 @@
 #include "core/vertex_definitions.hpp"
 #include "media/image_loader.hpp"
 #include "ipc/fd_passing.hpp"
-#include <thread>
-#include <unistd.h>
-#include <SDL3/SDL.h>
-#include <SDL3_image/SDL_image.h>
 #include "utils/logger.hpp"
 #include "shm/shm_writer.hpp"
 #include "shm/shm_viewer.hpp"
@@ -23,7 +21,7 @@ namespace vst
 
     ProducerApp::ProducerApp(GLFWwindow *window, const std::string &imagePath, const std::string &mode)
     {
-        // this->mode = mode;
+        this->mode = mode;
         context.init(window);
         texture = ImageLoader::loadTexture(
             imagePath,
@@ -63,7 +61,8 @@ namespace vst
 
         std::string shmName = "/tmp/vulkan_shared-" + std::to_string(texture.width) + "x" + std::to_string(texture.height) + ".sock";
         LOG_INFO("Creating shared memory segment: " + shmName);
-        
+        this->shmName = shmName;
+
         std::thread([fd, this, shmName]()
                     {
             LOG_INFO("Waiting for consumer connection on socket...");
@@ -75,7 +74,8 @@ namespace vst
                 LOG_INFO("Sent FD to consumer via Unix socket.");
                 close(client_fd);
             }
-            close(server_fd); }).detach();
+            close(server_fd); })
+            .detach();
     }
     ProducerApp::ProducerApp(const std::string &imagePath, const std::string &mode)
     {
@@ -198,6 +198,7 @@ namespace vst
             pipeline.cleanup(context.getDevice());
             vkDestroyDescriptorPool(context.getDevice(), descriptorPool, nullptr);
             context.cleanup();
+            ipc::cleanup_unix_socket(this->shmName);
         }
         else if (this->mode == "shm")
         {

@@ -64,10 +64,6 @@ namespace vst::shm
 
         munmap(data, imageSize);
         close(shm_fd);
-        // SDL_DestroyTexture(texture);
-        // SDL_DestroyRenderer(renderer);
-        // SDL_DestroyWindow(window);
-        // SDL_Quit();
     }
 
     void destroy_viewer(const std::string &shmName)

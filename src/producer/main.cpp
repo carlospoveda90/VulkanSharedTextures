@@ -1,78 +1,3 @@
-// #include <GLFW/glfw3.h>
-// #include <algorithm>
-// #include <iostream>
-// #include "utils/logger.hpp"
-// #include "app/producer_app.hpp"
-
-// int main(int argc, char **argv)
-// {
-//     if (argc < 2)
-//     {
-//         std::cerr << "Usage: ./vst_producer <image_path> [--mode=shm|dma]\n";
-//         return -1;
-//     }
-
-//     std::string mediaPath;
-//     std::string mode = "dma"; // Default
-
-//     for (int i = 1; i < argc; ++i)
-//     {
-//         std::string arg = argv[i];
-//         if (arg.rfind("--mode=", 0) == 0)
-//         {
-//             mode = arg.substr(7);
-//         }
-//         else if (arg.rfind("--", 0) != 0 && mediaPath.empty())
-//         {
-//             mediaPath = arg;
-//         }
-//     }
-
-//     if (mediaPath.empty())
-//     {
-//         std::cerr << "Error: image path is required.\n";
-//         return -1;
-//     }
-
-//     if (mode != "shm" && mode != "dma")
-//     {
-//         std::cerr << "Invalid mode: use --mode=shm or --mode=dma\n";
-//         return -1;
-//     }
-
-//     LOG_INFO("Running in mode: " + mode);
-//     LOG_INFO("Image path: " + mediaPath);
-
-//     if (!glfwInit())
-//     {
-//         LOG_ERR("Failed to initialize GLFW.");
-//         return -1;
-//     }
-
-//     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-//     GLFWwindow *window = glfwCreateWindow(800, 600, "Vulkan Producer", nullptr, nullptr);
-//     if (!window)
-//     {
-//         LOG_ERR("Failed to create GLFW window.");
-//         glfwTerminate();
-//         return -1;
-//     }
-
-//     vst::ProducerApp app(window, mediaPath, mode);
-
-//     while (!glfwWindowShouldClose(window))
-//     {
-//         glfwPollEvents();
-//         app.runFrame(mode);
-//     }
-
-//     glfwDestroyWindow(window);
-//     glfwTerminate();
-
-//     LOG_INFO("Producer exited cleanly.");
-//     return 0;
-// }
-// main.cpp (producer)
 #include <iostream>
 #include "utils/file_utils.hpp"
 #include "app/producer_app.hpp"
@@ -81,37 +6,86 @@
 #include "utils/mode_probe.hpp"
 #include "utils/file_utils.hpp"
 
-int main(int argc, char **argv)
+void print_usage()
 {
-    if (argc < 2)
+    std::cerr << "Usage: ./vst_producer [-i <image_path> | -v <video_path>] [--mode=shm|dma | -s | -d]\n";
+    std::cerr << "  -i <image_path>   Path to image file\n";
+    std::cerr << "  -v <video_path>   Path to video file (future support)\n";
+    std::cerr << "  --mode=shm        Use shared memory mode\n";
+    std::cerr << "  --mode=dma        Use DMA-BUF mode (default)\n";
+    std::cerr << "  -s                Shortcut for --mode=shm\n";
+    std::cerr << "  -d                Shortcut for --mode=dma\n";
+}
+
+int main(int argc, char *argv[])
+{
+    std::string mode = "dma"; // Default mode
+    std::string imagePath;
+    std::string videoPath;
+    bool modeSetExplicitly = false;
+
+    for (int i = 1; i < argc; ++i)
     {
-        std::cerr << "Usage: ./vst_producer <image_path> [--mode=shm|dma]\n";
+        std::string arg = argv[i];
+
+        if (arg == "-i" && i + 1 < argc)
+        {
+            imagePath = argv[++i];
+        }
+        else if (arg == "-v" && i + 1 < argc)
+        {
+            videoPath = argv[++i];
+        }
+        else if (arg == "--mode=shm" || arg == "-s")
+        {
+            mode = "shm";
+            modeSetExplicitly = true;
+        }
+        else if (arg == "--mode=dma" || arg == "-d")
+        {
+            mode = "dma";
+            modeSetExplicitly = true;
+        }
+        else if (arg.rfind("--mode=", 0) == 0)
+        {
+            std::string parsedMode = arg.substr(7);
+            if (parsedMode != "shm" && parsedMode != "dma")
+            {
+                std::cerr << "Invalid mode: " << parsedMode << "\n";
+                print_usage();
+                return EXIT_FAILURE;
+            }
+            mode = parsedMode;
+            modeSetExplicitly = true;
+        }
+        else
+        {
+            std::cerr << "Unknown or incomplete argument: " << arg << "\n";
+            print_usage();
+            return EXIT_FAILURE;
+        }
+    }
+
+    // Must have either -i or -v (currently only imagePath is used)
+    if (imagePath.empty() && videoPath.empty())
+    {
+        std::cerr << "Error: You must provide either an image (-i) or video (-v) path.\n";
+        print_usage();
         return EXIT_FAILURE;
     }
 
-    std::string mediaPath = argv[1];
-    std::string mode = "dma";
-    std::shared_ptr<vst::IAppWindow> window;
+    // Print selected options
+    std::cout << "Producer Mode: " << mode << (modeSetExplicitly ? "" : " (default)") << "\n";
+    if (!imagePath.empty())
+        std::cout << "Image Path: " << imagePath << "\n";
+    if (!videoPath.empty())
+        std::cout << "Video Path: " << videoPath << " (not yet supported)\n";
 
-    // Parse optional mode argument
-    if (argc >= 3)
-    {
-        std::string modeArg = argv[2];
-        if (modeArg.rfind("--mode=", 0) == 0)
-        {
-            mode = modeArg.substr(7);
-            if (mode != "dma" && mode != "shm")
-            {
-                std::cerr << "Invalid mode: " << mode << "\n";
-                std::cerr << "Supported modes: dma (default), shm\n";
-                return EXIT_FAILURE;
-            }
-        }
-    }
     // Check mode
     if (mode == "dma")
     {
         // Initialize GLFW
+        std::shared_ptr<vst::IAppWindow> window;
         if (!glfwInit())
         {
             std::cerr << "Failed to initialize GLFW.\n";
@@ -120,7 +94,7 @@ int main(int argc, char **argv)
         // Create a window without OpenGL context
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        vst::utils::ImageSize imageData = vst::utils::getImageSize(mediaPath);
+        vst::utils::ImageSize imageData = vst::utils::getImageSize(imagePath);
 
         window = std::make_shared<vst::GLFWWindowWrapper>(imageData.width, imageData.height, "Producer DMA-BUF");
         GLFWwindow *glfwWindow = static_cast<GLFWwindow *>(window->getNativeHandle());
@@ -133,7 +107,7 @@ int main(int argc, char **argv)
         // Start the producer app
         try
         {
-            vst::ProducerApp app(glfwWindow, mediaPath, mode);
+            vst::ProducerApp app(glfwWindow, imagePath, mode);
             while (!glfwWindowShouldClose(glfwWindow))
             {
                 glfwPollEvents();
@@ -156,8 +130,8 @@ int main(int argc, char **argv)
     {
         try
         {
-            vst::ProducerApp app(mediaPath, mode);
-            app.runFrame(mediaPath);
+            vst::ProducerApp app(imagePath, mode);
+            app.runFrame(imagePath);
         }
         catch (const std::exception &e)
         {

@@ -125,77 +125,16 @@ namespace vst::ipc
         return -1;
     }
 
-    // int send_fd_with_info(int sock_fd, int fd_to_send, uint32_t width, uint32_t height)
-    // {
-    //     struct
-    //     {
-    //         uint32_t width;
-    //         uint32_t height;
-    //     } dims = {width, height};
-
-    //     struct iovec iov = {
-    //         .iov_base = &dims,
-    //         .iov_len = sizeof(dims)};
-
-    //     char buf[CMSG_SPACE(sizeof(int))];
-    //     memset(buf, 0, sizeof(buf));
-
-    //     struct msghdr msg{};
-    //     msg.msg_iov = &iov;
-    //     msg.msg_iovlen = 1;
-    //     msg.msg_control = buf;
-    //     msg.msg_controllen = sizeof(buf);
-
-    //     struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-    //     cmsg->cmsg_level = SOL_SOCKET;
-    //     cmsg->cmsg_type = SCM_RIGHTS;
-    //     cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-    //     memcpy(CMSG_DATA(cmsg), &fd_to_send, sizeof(int));
-
-    //     msg.msg_controllen = cmsg->cmsg_len;
-
-    //     return sendmsg(sock_fd, &msg, 0);
-    // }
-
-    // int receive_fd_with_info(int sock_fd, int &out_fd, uint32_t &width, uint32_t &height)
-    // {
-    //     struct
-    //     {
-    //         uint32_t width;
-    //         uint32_t height;
-    //     } dims;
-
-    //     struct iovec iov = {
-    //         .iov_base = &dims,
-    //         .iov_len = sizeof(dims)};
-
-    //     char buf[CMSG_SPACE(sizeof(int))];
-    //     memset(buf, 0, sizeof(buf));
-
-    //     struct msghdr msg{};
-    //     msg.msg_iov = &iov;
-    //     msg.msg_iovlen = 1;
-    //     msg.msg_control = buf;
-    //     msg.msg_controllen = sizeof(buf);
-
-    //     ssize_t len = recvmsg(sock_fd, &msg, 0);
-    //     if (len < 0)
-    //         return -1;
-
-    //     struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-    //     if (cmsg && cmsg->cmsg_len == CMSG_LEN(sizeof(int)))
-    //     {
-    //         memcpy(&out_fd, CMSG_DATA(cmsg), sizeof(int));
-    //     }
-    //     else
-    //     {
-    //         return -1;
-    //     }
-
-    //     width = dims.width;
-    //     height = dims.height;
-
-    //     return 0;
-    // }
+    void cleanup_unix_socket(const std::string &path)
+    {
+        if (unlink(path.c_str()) == 0)
+        {
+            std::cout << "[INFO] Socket unlinked: " << path << std::endl;
+        }
+        else
+        {
+            perror("[WARN] Failed to unlink socket");
+        }
+    }
 
 } // namespace vst::ipc

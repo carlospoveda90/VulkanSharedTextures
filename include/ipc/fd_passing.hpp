@@ -13,4 +13,6 @@ namespace vst::ipc
     int send_fd_with_info(int socket_fd, int image_fd, uint32_t width, uint32_t height);
     int receive_fd_with_info(int socket_fd, int &image_fd, uint32_t &width, uint32_t &height);
 
+    void cleanup_unix_socket(const std::string &path);
+
 } // namespace vst::ipc

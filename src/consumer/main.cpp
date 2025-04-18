@@ -8,14 +8,6 @@
 
 int main(int argc, char **argv)
 {
-    if (!glfwInit())
-    {
-        LOG_ERR("Failed to initialize GLFW.");
-        return -1;
-    }
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
     std::optional<std::string> mediaPath;
     int width = 0, height = 0;
     std::string mode = vst::utils::detect_producer_mode();
@@ -34,8 +26,14 @@ int main(int argc, char **argv)
     }
     else if (mode == "dma")
     {
+        if (!glfwInit())
+        {
+            LOG_ERR("Failed to initialize GLFW.");
+            return -1;
+        }
+
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         mediaPath = vst::utils::findLatestDmaSocket();
-        // LOG_INFO("[CONSUMER] Socket path: " + *mediaPath);
         if (mediaPath)
         {
             auto dims = vst::utils::parseImageDimensions(*mediaPath);
