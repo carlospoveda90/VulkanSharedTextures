@@ -74,10 +74,12 @@
 // }
 // main.cpp (producer)
 #include <iostream>
-// #include <GLFW/glfw3.h>
+#include "utils/file_utils.hpp"
 #include "app/producer_app.hpp"
 #include "window/glfw_window.hpp"
 #include "window/sdl_window.hpp"
+#include "utils/mode_probe.hpp"
+#include "utils/file_utils.hpp"
 
 int main(int argc, char **argv)
 {
@@ -117,7 +119,10 @@ int main(int argc, char **argv)
         }
         // Create a window without OpenGL context
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        window = std::make_shared<vst::GLFWWindowWrapper>(800, 600, "Producer DMA-BUF");
+
+        vst::utils::ImageSize imageData = vst::utils::getImageSize(mediaPath);
+
+        window = std::make_shared<vst::GLFWWindowWrapper>(imageData.width, imageData.height, "Producer DMA-BUF");
         GLFWwindow *glfwWindow = static_cast<GLFWwindow *>(window->getNativeHandle());
         if (!glfwWindow)
         {
@@ -149,13 +154,10 @@ int main(int argc, char **argv)
     }
     else if (mode == "shm")
     {
-        // window = std::make_unique<vst::SDLWindowWrapper>(1280, 720, "Producer SHM");
-        // SDL_Window *sdlWindow = static_cast<SDL_Window *>(window->getNativeHandle());
         try
         {
             vst::ProducerApp app(mediaPath, mode);
             app.runFrame(mediaPath);
-
         }
         catch (const std::exception &e)
         {

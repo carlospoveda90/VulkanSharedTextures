@@ -3,6 +3,7 @@
 #include <tuple>
 #include <stdexcept>
 #include <sstream>
+#include <iostream>
 #include <cstdint>
 #include <stb_image.h>
 #include <optional>
@@ -71,15 +72,15 @@ namespace vst::utils
 
     std::optional<std::string> findLatestDmaSocket()
     {
-        std::string prefix = "/tmp/vulkan_socket-";
-        std::regex pattern("vulkan_socket-(\\d+)x(\\d+)");
+        std::string prefix = "/tmp/vulkan_shared-";
+        std::regex pattern("vulkan_shared-(\\d+)x(\\d+).sock");
 
         for (const auto &entry : std::filesystem::directory_iterator("/tmp"))
         {
             const std::string name = entry.path().filename().string();
             if (std::regex_match(name, pattern))
             {
-                return prefix + name.substr(std::string("vulkan_socket-").length());
+                return prefix + name.substr(std::string("vulkan_shared-").length());
             }
         }
         return std::nullopt;
@@ -88,7 +89,7 @@ namespace vst::utils
     std::optional<std::string> find_shared_image_file()
     {
         const std::regex shmPattern("vst_shared_texture-(\\d+)x(\\d+)");
-        const std::regex dmaPattern("vulkan_socket-(\\d+)x(\\d+)");
+        const std::regex dmaPattern("vulkan_shared-(\\d+)x(\\d+).sock");
 
         // Check SHM in /dev/shm
         for (const auto &entry : std::filesystem::directory_iterator("/dev/shm"))
@@ -104,6 +105,7 @@ namespace vst::utils
         for (const auto &entry : std::filesystem::directory_iterator("/tmp"))
         {
             const std::string name = entry.path().filename().string();
+            std::cout << "[DMA] File : " << name << '\n';
             if (std::regex_match(name, dmaPattern))
             {
                 return std::string("/tmp/") + name;

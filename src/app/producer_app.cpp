@@ -23,57 +23,51 @@ namespace vst
 
     ProducerApp::ProducerApp(GLFWwindow *window, const std::string &imagePath, const std::string &mode)
     {
-        this->mode = mode;
-        if (this->mode != "shm" && this->mode != "dma")
+        // this->mode = mode;
+        context.init(window);
+        texture = ImageLoader::loadTexture(
+            imagePath,
+            context.getDevice(),
+            context.getPhysicalDevice(),
+            context.getCommandPool(),
+            context.getGraphicsQueue(),
+            mode == "dma");
+
+        createDescriptorPool(context.getDevice(), descriptorPool);
+        descriptorManager.init(context.getDevice(), descriptorPool, texture);
+        pipeline.create(context.getDevice(), context.getSwapchainExtent(), context.getRenderPass(), descriptorManager.getLayout());
+
+        createVertexBuffer(
+            context.getDevice(),
+            context.getPhysicalDevice(),
+            vertexBuffer,
+            vertexBufferMemory,
+            FULLSCREEN_QUAD);
+
+        VkMemoryGetFdInfoKHR getFdInfo{VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR};
+        getFdInfo.memory = texture.memory;
+        getFdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+        auto vkGetMemoryFdKHR = reinterpret_cast<PFN_vkGetMemoryFdKHR>(vkGetDeviceProcAddr(context.getDevice(), "vkGetMemoryFdKHR"));
+
+        if (!vkGetMemoryFdKHR)
         {
-            throw std::runtime_error("Invalid mode. Use 'shm' or 'dma'.");
+            throw std::runtime_error("vkGetMemoryFdKHR is not available on this device.");
         }
-        // Export FD and wait for connection (background thread)
-        if (this->mode == "dma")
+
+        int fd = -1;
+        if (vkGetMemoryFdKHR(context.getDevice(), &getFdInfo, &fd) != VK_SUCCESS)
         {
-            // Initialize Vulkan context
-            context.init(window);
+            throw std::runtime_error("Failed to export DMA-BUF.");
+        }
 
-            texture = ImageLoader::loadTexture(
-                imagePath,
-                context.getDevice(),
-                context.getPhysicalDevice(),
-                context.getCommandPool(),
-                context.getGraphicsQueue(),
-                mode == "dma");
-
-            // Setup pipeline and rendering resources
-            createDescriptorPool(context.getDevice(), descriptorPool);
-            descriptorManager.init(context.getDevice(), descriptorPool, texture);
-            pipeline.create(context.getDevice(), context.getSwapchainExtent(), context.getRenderPass(), descriptorManager.getLayout());
-
-            createVertexBuffer(
-                context.getDevice(),
-                context.getPhysicalDevice(),
-                vertexBuffer,
-                vertexBufferMemory,
-                FULLSCREEN_QUAD);
-            VkMemoryGetFdInfoKHR getFdInfo{VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR};
-            getFdInfo.memory = texture.memory;
-            getFdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-
-            auto vkGetMemoryFdKHR = reinterpret_cast<PFN_vkGetMemoryFdKHR>(vkGetDeviceProcAddr(context.getDevice(), "vkGetMemoryFdKHR"));
-
-            if (!vkGetMemoryFdKHR)
-            {
-                throw std::runtime_error("vkGetMemoryFdKHR is not available on this device.");
-            }
-
-            int fd = -1;
-            if (vkGetMemoryFdKHR(context.getDevice(), &getFdInfo, &fd) != VK_SUCCESS)
-            {
-                throw std::runtime_error("Failed to export DMA-BUF.");
-            }
-
-            std::thread([fd, this]()
-                        {
+        std::string shmName = "/tmp/vulkan_shared-" + std::to_string(texture.width) + "x" + std::to_string(texture.height) + ".sock";
+        LOG_INFO("Creating shared memory segment: " + shmName);
+        
+        std::thread([fd, this, shmName]()
+                    {
             LOG_INFO("Waiting for consumer connection on socket...");
-            int server_fd = ipc::setup_unix_server_socket("/tmp/vulkan_shared.sock");
+            int server_fd = ipc::setup_unix_server_socket(shmName);
             int client_fd = accept(server_fd, nullptr, nullptr);
             if (client_fd >= 0)
             {
@@ -81,50 +75,38 @@ namespace vst
                 LOG_INFO("Sent FD to consumer via Unix socket.");
                 close(client_fd);
             }
-            close(server_fd); })
-                .detach();
-        }
-        else
-        {
-            throw std::runtime_error("Invalid mode. Use 'dma' or 'shm'.");
-        }
+            close(server_fd); }).detach();
     }
     ProducerApp::ProducerApp(const std::string &imagePath, const std::string &mode)
     {
         this->mode = mode;
         LOG_INFO("ProducerApp constructor called with imagePath: " + imagePath + " and mode: " + mode);
-        if (this->mode == "shm")
-        {
-            vst::utils::ImageSize imageData = vst::utils::getImageSize(imagePath);
-            // Create shared memory segment
-            LOG_INFO("Running in shm_open mode...");
 
-            int texWidth, texHeight, texChannels;
-            stbi_uc *pixels = stbi_load(imagePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        vst::utils::ImageSize imageData = vst::utils::getImageSize(imagePath);
+        // Create shared memory segment
+        LOG_INFO("Running in shm_open mode...");
 
-            LOG_INFO("width: " + std::to_string(texWidth) + ", height: " + std::to_string(texHeight) + ", channels: " + std::to_string(texChannels));
+        int texWidth, texHeight, texChannels;
+        stbi_uc *pixels = stbi_load(imagePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
-            if (!pixels)
-                throw std::runtime_error("Failed to load image for shm.");
+        LOG_INFO("width: " + std::to_string(texWidth) + ", height: " + std::to_string(texHeight) + ", channels: " + std::to_string(texChannels));
 
-            std::string shmNameSize = "/vst_shared_texture-" + std::to_string(imageData.width) + "x" + std::to_string(imageData.height);
-            LOG_INFO("Creating shared memory segment: " + shmNameSize);
+        if (!pixels)
+            throw std::runtime_error("Failed to load image for shm.");
 
-            size_t imageSize = texWidth * texHeight * 4;
-            bool success = vst::shm::write_to_shm(shmNameSize, imageData, pixels, imageSize);
-            stbi_image_free(pixels); // Feel free the loaded image data
+        std::string shmNameSize = "/vst_shared_texture-" + std::to_string(imageData.width) + "x" + std::to_string(imageData.height);
+        LOG_INFO("Creating shared memory segment: " + shmNameSize);
 
-            if (!success)
-                throw std::runtime_error("Failed to write image to shared memory.");
+        size_t imageSize = texWidth * texHeight * 4;
+        bool success = vst::shm::write_to_shm(shmNameSize, imageData, pixels, imageSize);
+        stbi_image_free(pixels); // Feel free the loaded image data
 
-            LOG_INFO("Image written to shared memory: /dev/shm" + shmNameSize);
+        if (!success)
+            throw std::runtime_error("Failed to write image to shared memory.");
 
-            return;
-        }
-        else
-        {
-            throw std::runtime_error("Invalid mode. Use 'dma' or 'shm'.");
-        }
+        LOG_INFO("Image written to shared memory: /dev/shm" + shmNameSize);
+
+        return;
     }
 
     void createDescriptorPool(VkDevice device, VkDescriptorPool &pool)

@@ -59,10 +59,12 @@ namespace vst
         context.init(window);
         // === Socket: Receive FD from Producer ===
         LOG_INFO("Connecting to producer via socket...");
-        int sock_fd = vst::ipc::connect_unix_client_socket("/tmp/vulkan_shared.sock");
+        
+        std::string socketPath = vst::utils::findLatestDmaSocket().value_or("");
+        LOG_INFO("Socket path: " + socketPath); 
+        int sock_fd = vst::ipc::connect_unix_client_socket(socketPath);
         if (sock_fd < 0)
             throw std::runtime_error("Failed to connect to producer via socket.");
-
         int fd = -1;
         uint32_t texWidth = 0, texHeight = 0;
         if (vst::ipc::receive_fd_with_info(sock_fd, fd, texWidth, texHeight) < 0)

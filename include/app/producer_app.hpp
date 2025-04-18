@@ -7,6 +7,7 @@
 #include "core/vulkan_context.hpp"
 #include "media/image_loader.hpp"
 #include "window/iapp_window.hpp"
+#include "utils/file_utils.hpp"
 
 namespace vst
 {
@@ -28,6 +29,7 @@ namespace vst
         Pipeline pipeline;
         std::string mode;
         std::string shmName;
+        vst::utils::ImageSize imageData;
 
         VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
         DescriptorManager descriptorManager;

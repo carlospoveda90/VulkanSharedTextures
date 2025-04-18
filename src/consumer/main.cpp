@@ -35,6 +35,7 @@ int main(int argc, char **argv)
     else if (mode == "dma")
     {
         mediaPath = vst::utils::findLatestDmaSocket();
+        // LOG_INFO("[CONSUMER] Socket path: " + *mediaPath);
         if (mediaPath)
         {
             auto dims = vst::utils::parseImageDimensions(*mediaPath);
