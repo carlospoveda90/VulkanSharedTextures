@@ -12,9 +12,12 @@ namespace vst
         std::ifstream file(filename, std::ios::ate | std::ios::binary);
         if (!file.is_open())
         {
+            // std::cerr << "[ERROR] Failed to open file: " << filename << "\n";
+            // return;
             throw std::runtime_error("Failed to open shader file: " + filename);
         }
 
+        LOG_INFO("[DEBUG] Shader opened: " + filename);
         size_t fileSize = static_cast<size_t>(file.tellg());
         std::vector<char> buffer(fileSize);
 
@@ -46,8 +49,8 @@ namespace vst
 
     void Pipeline::create(VkDevice device, VkExtent2D extent, VkRenderPass renderPass, VkDescriptorSetLayout descriptorSetLayout)
     {
-        auto vertShaderCode = readFile("shaders/vertex.spv");
-        auto fragShaderCode = readFile("shaders/fragment.spv");
+        auto vertShaderCode = readFile("/home/shuma/Documents/Bauhaus/10-Thesis/src/VulkanSharedTextures/build/shaders/vertex.spv");
+        auto fragShaderCode = readFile("/home/shuma/Documents/Bauhaus/10-Thesis/src/VulkanSharedTextures/build/shaders/fragment.spv");
 
         VkShaderModule vertShaderModule = createShaderModule(device, vertShaderCode);
         VkShaderModule fragShaderModule = createShaderModule(device, fragShaderCode);
@@ -135,10 +138,19 @@ namespace vst
         pipelineInfo.renderPass = renderPass;
         pipelineInfo.subpass = 0;
 
-        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS)
+        try
         {
-            throw std::runtime_error("Failed to create graphics pipeline.");
+            vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline);
         }
+        catch (const std::exception &e)
+        {
+            LOG_ERR("Failed to set base pipeline: " + std::string(e.what()));
+        }
+
+        // if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS)
+        // {
+        //     throw std::runtime_error("Failed to create graphics pipeline.");
+        // }
 
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
         vkDestroyShaderModule(device, vertShaderModule, nullptr);

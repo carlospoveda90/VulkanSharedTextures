@@ -133,7 +133,7 @@ namespace vst::ipc
         }
         else
         {
-            perror("[WARN] Failed to unlink socket");
+            perror("[ERROR] Failed to unlink socket");
         }
     }
 

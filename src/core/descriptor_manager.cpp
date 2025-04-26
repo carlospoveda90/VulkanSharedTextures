@@ -4,7 +4,7 @@
 namespace vst
 {
 
-    void DescriptorManager::init(VkDevice device, VkDescriptorPool descriptorPool, Texture &texture)
+    void DescriptorManager::init(VkDevice device, VkDescriptorPool descriptorPool, TextureImage &texture)
     {
         // Descriptor layout
         VkDescriptorSetLayoutBinding samplerLayoutBinding{};
@@ -58,6 +58,25 @@ namespace vst
         imageInfo.sampler = sampler;
 
         VkWriteDescriptorSet descriptorWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        descriptorWrite.dstSet = descriptorSet;
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pImageInfo = &imageInfo;
+
+        vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+    }
+
+    void DescriptorManager::updateWithImage(VkDevice device, VkImageView view, VkSampler sampler)
+    {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = view;
+        imageInfo.sampler = sampler;
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descriptorWrite.dstSet = descriptorSet;
         descriptorWrite.dstBinding = 0;
         descriptorWrite.dstArrayElement = 0;

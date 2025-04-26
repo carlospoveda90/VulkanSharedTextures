@@ -10,6 +10,7 @@ find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(SDL3 REQUIRED)
 find_package(SDL3_image REQUIRED)
+find_package(OpenCV REQUIRED)
 
 # stb_image for image loading
 include(FetchContent)
@@ -20,26 +21,50 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(stb)
 include_directories(${stb_SOURCE_DIR})
-
+    
 # Includes
 include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${OpenCV_INCLUDE_DIRS})
+
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
+    libavformat
+    libavcodec
+    libavutil
+    libswscale
+)
 
 # Producer
 add_executable(vst_producer 
         src/producer/main.cpp
         src/core/vulkan_context.cpp)
-target_link_libraries(vst_producer Vulkan::Vulkan SDL3::SDL3 SDL3_image::SDL3_image glfw glm pthread)
+target_link_libraries(vst_producer 
+    Vulkan::Vulkan 
+    SDL3::SDL3 
+    SDL3_image::SDL3_image 
+    glfw 
+    glm 
+    pthread 
+    opencv_core
+    opencv_imgproc
+    opencv_highgui
+    opencv_videoio
+)
 target_include_directories(vst_producer PRIVATE include)
 target_sources(vst_producer PRIVATE
     src/producer/main.cpp
     src/core/vulkan_context.cpp
     src/core/vulkan_device.cpp
+    src/core/vulkan_utils.cpp
     src/core/swapchain.cpp
     src/app/producer_app.cpp
     src/shm/shm_writer.cpp
     src/shm/shm_viewer.cpp
+    src/media/texture_image.cpp
+    src/media/texture_video.cpp
     src/media/image_loader.cpp
     src/media/stb_image.cpp
+    src/media/video_loader.cpp
+    src/media/frame_queue.cpp
     src/core/pipeline.cpp
     src/core/descriptor_manager.cpp
     src/core/vertex_definitions.cpp
@@ -59,6 +84,8 @@ add_executable(vst_consumer
     src/shm/shm_writer.cpp
     src/shm/shm_viewer.cpp
     src/utils/file_utils.cpp
+    src/media/texture_image.cpp
+    src/media/texture_video.cpp
     src/media/image_loader.cpp
     src/media/stb_image.cpp
     src/utils/mode_probe.cpp
@@ -67,12 +94,22 @@ add_executable(vst_consumer
     src/core/vertex_definitions.cpp
     src/core/vulkan_context.cpp
     src/core/vulkan_device.cpp
+    src/core/vulkan_utils.cpp
     src/core/swapchain.cpp
     src/ipc/fd_passing.cpp
 )
 target_include_directories(vst_consumer PRIVATE include)
-target_link_libraries(vst_consumer Vulkan::Vulkan SDL3::SDL3 SDL3_image::SDL3_image glfw glm pthread)
-
+target_link_libraries(vst_consumer Vulkan::Vulkan 
+    SDL3::SDL3
+    SDL3_image::SDL3_image 
+    glfw 
+    glm 
+    pthread
+    opencv_core
+    opencv_imgproc
+    opencv_highgui
+    opencv_videoio
+)
 
 # Find glslangValidator
 find_program(GLSL_VALIDATOR glslangValidator HINTS /usr/bin /usr/local/bin $ENV{VULKAN_SDK}/bin)

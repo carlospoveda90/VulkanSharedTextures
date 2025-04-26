@@ -5,6 +5,7 @@
 #include "window/sdl_window.hpp"
 #include "utils/mode_probe.hpp"
 #include "utils/file_utils.hpp"
+#include "media/video_loader.hpp"
 
 void print_usage()
 {
@@ -20,8 +21,8 @@ void print_usage()
 int main(int argc, char *argv[])
 {
     std::string mode = "dma"; // Default mode
-    std::string imagePath;
-    std::string videoPath;
+    std::string filePath;
+    bool isVideo = false;
     bool modeSetExplicitly = false;
 
     for (int i = 1; i < argc; ++i)
@@ -30,11 +31,13 @@ int main(int argc, char *argv[])
 
         if (arg == "-i" && i + 1 < argc)
         {
-            imagePath = argv[++i];
+            filePath = argv[++i];
+            isVideo = false;
         }
         else if (arg == "-v" && i + 1 < argc)
         {
-            videoPath = argv[++i];
+            filePath = argv[++i];
+            isVideo = true;
         }
         else if (arg == "--mode=shm" || arg == "-s")
         {
@@ -67,19 +70,18 @@ int main(int argc, char *argv[])
     }
 
     // Must have either -i or -v (currently only imagePath is used)
-    if (imagePath.empty() && videoPath.empty())
+    if (filePath.empty())
     {
         std::cerr << "Error: You must provide either an image (-i) or video (-v) path.\n";
         print_usage();
         return EXIT_FAILURE;
     }
-
+    
     // Print selected options
     std::cout << "Producer Mode: " << mode << (modeSetExplicitly ? "" : " (default)") << "\n";
-    if (!imagePath.empty())
-        std::cout << "Image Path: " << imagePath << "\n";
-    if (!videoPath.empty())
-        std::cout << "Video Path: " << videoPath << " (not yet supported)\n";
+    std::cout << (isVideo ? "Video Path: " : "Image Path: ") << filePath << "\n";
+    
+    vst::ProducerApp app;
 
     // Check mode
     if (mode == "dma")
@@ -91,12 +93,32 @@ int main(int argc, char *argv[])
             std::cerr << "Failed to initialize GLFW.\n";
             return EXIT_FAILURE;
         }
+        int windowWidth = 0;
+        int windowHeight = 0;
         // Create a window without OpenGL context
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        vst::utils::ImageSize imageData = vst::utils::getImageSize(imagePath);
+        if (isVideo)
+        {
+            vst::VideoInfo videoInfo = vst::VideoLoader::getVideoResolution(filePath);
+            if (!videoInfo.valid)
+            {
+                std::cerr << "Failed to load video resolution!\n";
+                return EXIT_FAILURE;
+            }
+            windowWidth = videoInfo.width;
+            windowHeight = videoInfo.height;
+            std::cout << "Video resolution: " << windowWidth << "x" << windowHeight << "\n";
+        }
+        else
+        {
+            // Get image size
+            vst::utils::ImageSize imageData = vst::utils::getImageSize(filePath);
+            windowWidth = imageData.width;
+            windowHeight = imageData.height;
+        }
 
-        window = std::make_shared<vst::GLFWWindowWrapper>(imageData.width, imageData.height, "Producer DMA-BUF");
+        window = std::make_shared<vst::GLFWWindowWrapper>(windowWidth, windowHeight, "Producer DMA-BUF");
         GLFWwindow *glfwWindow = static_cast<GLFWwindow *>(window->getNativeHandle());
         if (!glfwWindow)
         {
@@ -107,10 +129,12 @@ int main(int argc, char *argv[])
         // Start the producer app
         try
         {
-            vst::ProducerApp app(glfwWindow, imagePath, mode);
+            // vst::ProducerApp app(glfwWindow, filePath, mode, isVideo);
+            app.ProducerDMA(glfwWindow, filePath, mode, isVideo);
             while (!glfwWindowShouldClose(glfwWindow))
             {
                 glfwPollEvents();
+                // app.updateFrame();
                 app.runFrame();
             }
         }
@@ -130,8 +154,9 @@ int main(int argc, char *argv[])
     {
         try
         {
-            vst::ProducerApp app(imagePath, mode);
-            app.runFrame(imagePath);
+            //vst::ProducerApp app(filePath, mode, isVideo);
+            app.ProducerSHM(filePath, mode, isVideo);
+            app.runFrame(filePath);
         }
         catch (const std::exception &e)
         {

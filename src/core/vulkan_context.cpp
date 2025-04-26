@@ -136,6 +136,15 @@ namespace vst
 
     void VulkanContext::drawFrame(VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet, VkBuffer vertexBuffer)
     {
+        if (!pipeline)
+            throw std::runtime_error("drawFrame: pipeline is null");
+        if (!layout)
+            throw std::runtime_error("drawFrame: pipeline layout is null");
+        if (!descriptorSet)
+            throw std::runtime_error("drawFrame: descriptorSet is null");
+        if (!vertexBuffer)
+            throw std::runtime_error("drawFrame: vertexBuffer is null");
+
         vkWaitForFences(device.getDevice(), 1, &inFlightFence, VK_TRUE, UINT64_MAX);
         vkResetFences(device.getDevice(), 1, &inFlightFence);
 

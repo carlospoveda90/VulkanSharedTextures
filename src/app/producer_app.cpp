@@ -2,10 +2,16 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <cstring>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/videoio.hpp>
 #include "app/producer_app.hpp"
 #include "core/vulkan_context.hpp"
 #include "core/vertex_definitions.hpp"
+#include "media/texture_image.hpp"
 #include "media/image_loader.hpp"
+#include "media/video_loader.hpp"
 #include "ipc/fd_passing.hpp"
 #include "utils/logger.hpp"
 #include "shm/shm_writer.hpp"
@@ -19,75 +25,91 @@ namespace vst
     void createDescriptorPool(VkDevice device, VkDescriptorPool &pool);
     void createVertexBuffer(VkDevice device, VkPhysicalDevice phys, VkBuffer &buffer, VkDeviceMemory &memory, const std::vector<vst::Vertex> &vertices);
 
-    ProducerApp::ProducerApp(GLFWwindow *window, const std::string &imagePath, const std::string &mode)
+    ProducerApp::ProducerApp()
+        : context(*(new VulkanContext()))
+    {
+    }
+
+    // ProducerApp::ProducerApp(VulkanContext &ctx)
+    //     : context(ctx)
+    // {
+    // }
+
+    void ProducerApp::ProducerDMA(GLFWwindow *window, const std::string &filePath, const std::string &mode, bool isVideo)
     {
         this->mode = mode;
         context.init(window);
-        texture = ImageLoader::loadTexture(
-            imagePath,
-            context.getDevice(),
-            context.getPhysicalDevice(),
-            context.getCommandPool(),
-            context.getGraphicsQueue(),
-            mode == "dma");
 
-        createDescriptorPool(context.getDevice(), descriptorPool);
-        descriptorManager.init(context.getDevice(), descriptorPool, texture);
-        pipeline.create(context.getDevice(), context.getSwapchainExtent(), context.getRenderPass(), descriptorManager.getLayout());
-
-        createVertexBuffer(
-            context.getDevice(),
-            context.getPhysicalDevice(),
-            vertexBuffer,
-            vertexBufferMemory,
-            FULLSCREEN_QUAD);
-
-        VkMemoryGetFdInfoKHR getFdInfo{VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR};
-        getFdInfo.memory = texture.memory;
-        getFdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-
-        auto vkGetMemoryFdKHR = reinterpret_cast<PFN_vkGetMemoryFdKHR>(vkGetDeviceProcAddr(context.getDevice(), "vkGetMemoryFdKHR"));
-
-        if (!vkGetMemoryFdKHR)
+        if (isVideo)
         {
-            throw std::runtime_error("vkGetMemoryFdKHR is not available on this device.");
+            LOG_INFO("Running video producer, loading: " + filePath);
+            LOG_INFO("Mode: DMA-BUF with Vulkan");
         }
-
-        int fd = -1;
-        if (vkGetMemoryFdKHR(context.getDevice(), &getFdInfo, &fd) != VK_SUCCESS)
+        else
         {
-            throw std::runtime_error("Failed to export DMA-BUF.");
-        }
+            TextureImage texture;
+            texture = ImageLoader::loadTexture(filePath, context.getDevice(), context.getPhysicalDevice(),
+                                               context.getCommandPool(), context.getGraphicsQueue(), mode == "dma");
 
-        std::string shmName = "/tmp/vulkan_shared-" + std::to_string(texture.width) + "x" + std::to_string(texture.height) + ".sock";
-        LOG_INFO("Creating shared memory segment: " + shmName);
-        this->shmName = shmName;
+            createDescriptorPool(context.getDevice(), descriptorPool);
+            descriptorManager.init(context.getDevice(), descriptorPool, texture);
+            pipeline.create(context.getDevice(), context.getSwapchainExtent(), context.getRenderPass(), descriptorManager.getLayout());
 
-        std::thread([fd, this, shmName]()
-                    {
-            LOG_INFO("Waiting for consumer connection on socket...");
-            int server_fd = ipc::setup_unix_server_socket(shmName);
-            int client_fd = accept(server_fd, nullptr, nullptr);
-            if (client_fd >= 0)
+            createVertexBuffer(
+                context.getDevice(),
+                context.getPhysicalDevice(),
+                vertexBuffer,
+                vertexBufferMemory,
+                FULLSCREEN_QUAD);
+
+            VkMemoryGetFdInfoKHR getFdInfo{VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR};
+            getFdInfo.memory = texture.memory;
+            getFdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+            auto vkGetMemoryFdKHR = reinterpret_cast<PFN_vkGetMemoryFdKHR>(vkGetDeviceProcAddr(context.getDevice(), "vkGetMemoryFdKHR"));
+
+            if (!vkGetMemoryFdKHR)
             {
-                vst::ipc::send_fd_with_info(client_fd, fd, texture.width, texture.height);
-                LOG_INFO("Sent FD to consumer via Unix socket.");
-                close(client_fd);
+                throw std::runtime_error("vkGetMemoryFdKHR is not available on this device.");
             }
-            close(server_fd); })
-            .detach();
+
+            int fd = -1;
+            if (vkGetMemoryFdKHR(context.getDevice(), &getFdInfo, &fd) != VK_SUCCESS)
+            {
+                throw std::runtime_error("Failed to export DMA-BUF.");
+            }
+
+            std::string shmName = "/tmp/vulkan_shared-" + std::to_string(texture.width) + "x" + std::to_string(texture.height) + ".sock";
+            LOG_INFO("Creating shared memory segment: " + shmName);
+            this->shmName = shmName;
+
+            std::thread([fd, this, shmName, texture]()
+                        {
+                LOG_INFO("Waiting for consumer connection on socket...");
+                int server_fd = ipc::setup_unix_server_socket(shmName);
+                int client_fd = accept(server_fd, nullptr, nullptr);
+                if (client_fd >= 0)
+                {
+                    vst::ipc::send_fd_with_info(client_fd, fd, texture.width, texture.height);
+                    LOG_INFO("Sent FD to consumer via Unix socket.");
+                    close(client_fd);
+                }
+                close(server_fd); })
+                .detach();
+        }
     }
-    ProducerApp::ProducerApp(const std::string &imagePath, const std::string &mode)
+    
+    void ProducerApp::ProducerSHM(const std::string &filePath, const std::string &mode, bool isVideo)
     {
         this->mode = mode;
-        LOG_INFO("ProducerApp constructor called with imagePath: " + imagePath + " and mode: " + mode);
+        LOG_INFO("ProducerApp constructor called with filePath: " + filePath + " and mode: " + mode);
 
-        vst::utils::ImageSize imageData = vst::utils::getImageSize(imagePath);
+        vst::utils::ImageSize imageData = vst::utils::getImageSize(filePath);
         // Create shared memory segment
         LOG_INFO("Running in shm_open mode...");
 
         int texWidth, texHeight, texChannels;
-        stbi_uc *pixels = stbi_load(imagePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        stbi_uc *pixels = stbi_load(filePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
         LOG_INFO("width: " + std::to_string(texWidth) + ", height: " + std::to_string(texHeight) + ", channels: " + std::to_string(texChannels));
 
@@ -171,6 +193,19 @@ namespace vst
 
     void ProducerApp::runFrame()
     {
+        if (!pipeline.get())
+            // LOG_ERR("Pipeline is null");
+            throw std::runtime_error("drawFrame: pipeline is null");
+        if (!pipeline.getLayout())
+            // LOG_ERR("Pipeline layout is null");
+            throw std::runtime_error("drawFrame: pipeline layout is null");
+        if (!descriptorManager.getDescriptorSet())
+            // LOG_ERR("Descriptor set is null");
+            throw std::runtime_error("drawFrame: descriptorSet is null");
+        if (!vertexBuffer)
+            // LOG_ERR("Vertex buffer is null");
+            throw std::runtime_error("drawFrame: vertexBuffer is null");
+
         context.drawFrame(
             pipeline.get(),
             pipeline.getLayout(),
@@ -178,10 +213,10 @@ namespace vst
             vertexBuffer);
     }
 
-    void ProducerApp::runFrame(const std::string &imagePath)
+    void ProducerApp::runFrame(const std::string &filePath)
     {
         LOG_INFO("Running shm_open producer");
-        vst::utils::ImageSize imageData = vst::utils::getImageSize(imagePath);
+        vst::utils::ImageSize imageData = vst::utils::getImageSize(filePath);
         LOG_INFO("Image size: " + std::to_string(imageData.width) + "x" + std::to_string(imageData.height));
         std::string shmNameSize = "/vst_shared_texture-" + std::to_string(imageData.width) + "x" + std::to_string(imageData.height);
         this->shmName = shmNameSize;
@@ -198,6 +233,7 @@ namespace vst
             pipeline.cleanup(context.getDevice());
             vkDestroyDescriptorPool(context.getDevice(), descriptorPool, nullptr);
             context.cleanup();
+            LOG_INFO("Socker Name: " + this->shmName);
             ipc::cleanup_unix_socket(this->shmName);
         }
         else if (this->mode == "shm")
@@ -214,6 +250,7 @@ namespace vst
 
     ProducerApp::~ProducerApp()
     {
+        // stopVideoStreaming();
         cleanup();
     }
 

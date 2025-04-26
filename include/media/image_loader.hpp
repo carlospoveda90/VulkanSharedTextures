@@ -2,23 +2,20 @@
 
 #include <vulkan/vulkan.h>
 #include <string>
+#include "media/texture_image.hpp"
 
 namespace vst
 {
 
-    struct Texture
-    {
-        VkImage image;
-        VkDeviceMemory memory;
-        VkImageView view;
-        int width;
-        int height;
-    };
-
     class ImageLoader
     {
     public:
-        static Texture loadTexture(const std::string &path, VkDevice device, VkPhysicalDevice physicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, bool exportMemory = false);
+        static TextureImage loadTexture(const std::string &path,
+                                        VkDevice device,
+                                        VkPhysicalDevice physicalDevice,
+                                        VkCommandPool commandPool,
+                                        VkQueue graphicsQueue,
+                                        bool exportMemory = false);
     };
 
-}
+} // namespace vst

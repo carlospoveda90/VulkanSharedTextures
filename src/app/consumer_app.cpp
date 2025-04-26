@@ -223,7 +223,7 @@ namespace vst
 
         vkCreateDescriptorPool(context.getDevice(), &poolInfo, nullptr, &descriptorPool);
 
-        Texture importedTex{};
+        TextureImage importedTex{};
         importedTex.view = importedImageView;
         importedTex.width = imageWidth;
         importedTex.height = imageHeight;
