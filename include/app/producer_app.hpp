@@ -17,6 +17,7 @@
 #include "utils/file_utils.hpp"
 #include "media/frame_queue.hpp"
 #include "media/video_loader.hpp"
+#include "memory/shm_video_handler.hpp"
 
 namespace vst
 {
@@ -24,7 +25,7 @@ namespace vst
     {
     public:
         ProducerApp();
-        // ProducerApp(VulkanContext &context);
+        ProducerApp(VulkanContext &context);
         ~ProducerApp();
 
         void ProducerDMA(GLFWwindow *window, const std::string &imagePath, const std::string &mode, bool isVideo);
@@ -34,34 +35,35 @@ namespace vst
         void runFrame(const std::string &imagePath);
         void cleanup();
 
-        // video methods
-        // bool initialize(const std::string &videoPath);
-        // void update();
-        // void cleanup();
+        // Video methods
+        bool initialize(const std::string &videoPath);
+        void update();
 
-        // void startVideoStreaming(const std::string &videoPath, Texture texture);
-        // void stopVideoStreaming();
-        // void updateFrame();
+        // Accessors for non-threaded implementation
+        VideoLoader *getVideoLoader() { return videoLoader.get(); }
+        std::shared_ptr<memory::ShmVideoHandler> getSharedMemoryHandler() { return shmVideoHandler; }
+        std::string getWindowTitle() { return windowTitle; }
+
+        bool isDecodingDone() const { return decodingDone; }
 
     private:
         FrameQueue frameQueue;
         std::thread decodeThread;
         std::atomic<bool> decodingDone = false;
-        bool videoMode = false;
-        // VulkanContext context;
-        // TextureImage texture;
+        bool isVideo = false;
         Pipeline pipeline;
         std::string mode;
         std::string shmName;
+        std::string windowTitle;
         cv::VideoCapture cap;
         vst::utils::ImageSize imageData;
         std::atomic<bool> running = true;
-        
-        // video variables
-        // VulkanContext *context = nullptr;
+
+        // Video variables
         VulkanContext &context;
         std::unique_ptr<VideoLoader> videoLoader;
         std::unique_ptr<TextureVideo> videoTexture;
+        std::shared_ptr<memory::ShmVideoHandler> shmVideoHandler;
         bool videoEnded = false;
 
         VkDescriptorPool descriptorPool = VK_NULL_HANDLE;

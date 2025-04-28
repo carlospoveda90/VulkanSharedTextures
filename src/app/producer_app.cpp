@@ -1,6 +1,7 @@
 #include <thread>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/mman.h>
 #include <cstring>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
@@ -17,6 +18,7 @@
 #include "shm/shm_writer.hpp"
 #include "shm/shm_viewer.hpp"
 #include "memory/shm_handler.hpp"
+#include "memory/shm_video_handler.hpp" // Ensure the correct header for ShmVideoHandler is included
 #include "stb_image.h"
 #include "utils/file_utils.hpp"
 
@@ -30,13 +32,70 @@ namespace vst
     {
     }
 
-    // ProducerApp::ProducerApp(VulkanContext &ctx)
-    //     : context(ctx)
-    // {
-    // }
+    ProducerApp::ProducerApp(VulkanContext &ctx)
+        : context(ctx)
+    {
+    }
+
+    bool ProducerApp::initialize(const std::string &videoPath)
+    {
+        videoLoader = std::make_unique<VideoLoader>();
+
+        if (!videoLoader->open(videoPath))
+        {
+            std::cerr << "Failed to open video: " << videoPath << std::endl;
+            return false;
+        }
+
+        cv::Mat firstFrame;
+        if (!videoLoader->grabFrame(firstFrame))
+        {
+            std::cerr << "Failed to read first frame from video" << std::endl;
+            return false;
+        }
+
+        videoTexture = std::make_unique<TextureVideo>(context);
+
+        if (!videoTexture->createFromSize(firstFrame.cols, firstFrame.rows))
+        {
+            std::cerr << "Failed to create video texture" << std::endl;
+            return false;
+        }
+
+        videoTexture->updateFromFrame(firstFrame);
+
+        return true;
+    }
+
+    void ProducerApp::update()
+    {
+        if (videoEnded)
+        {
+            return;
+        }
+
+        cv::Mat frame;
+        if (!videoLoader->grabFrame(frame))
+        {
+            videoEnded = true;
+            std::cout << "Video ended." << std::endl;
+            return;
+        }
+
+        try
+        {
+            videoTexture->updateFromFrame(frame);
+        }
+        catch (const std::exception &e)
+        {
+            std::cerr << "Failed to update texture from frame: " << e.what() << std::endl;
+            videoEnded = true;
+        }
+    }
 
     void ProducerApp::ProducerDMA(GLFWwindow *window, const std::string &filePath, const std::string &mode, bool isVideo)
     {
+        this->isVideo = isVideo;
         this->mode = mode;
         context.init(window);
 
@@ -98,37 +157,91 @@ namespace vst
                 .detach();
         }
     }
-    
+
     void ProducerApp::ProducerSHM(const std::string &filePath, const std::string &mode, bool isVideo)
     {
+        this->isVideo = isVideo;
         this->mode = mode;
         LOG_INFO("ProducerApp constructor called with filePath: " + filePath + " and mode: " + mode);
 
-        vst::utils::ImageSize imageData = vst::utils::getImageSize(filePath);
-        // Create shared memory segment
-        LOG_INFO("Running in shm_open mode...");
+        if (isVideo)
+        {
+            LOG_INFO("Running in shm_open mode with video...");
 
-        int texWidth, texHeight, texChannels;
-        stbi_uc *pixels = stbi_load(filePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+            // Initialize video loader
+            videoLoader = std::make_unique<VideoLoader>();
+            if (!videoLoader->open(filePath))
+            {
+                throw std::runtime_error("Failed to open video file: " + filePath);
+            }
 
-        LOG_INFO("width: " + std::to_string(texWidth) + ", height: " + std::to_string(texHeight) + ", channels: " + std::to_string(texChannels));
+            // Get video properties
+            cv::VideoCapture &cap = videoLoader->getCapture();
+            int width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
+            int height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+            double fps = cap.get(cv::CAP_PROP_FPS);
+            int totalFrames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
 
-        if (!pixels)
-            throw std::runtime_error("Failed to load image for shm.");
+            LOG_INFO("Video properties: " + std::to_string(width) + "x" + std::to_string(height) +
+                     " @ " + std::to_string(fps) + " fps, " + std::to_string(totalFrames) + " frames");
 
-        std::string shmNameSize = "/vst_shared_texture-" + std::to_string(imageData.width) + "x" + std::to_string(imageData.height);
-        LOG_INFO("Creating shared memory segment: " + shmNameSize);
+            // Create shared memory segment name
+            std::string shmName = "/vst_shared_video-" + std::to_string(width) + "x" + std::to_string(height);
+            this->shmName = shmName;
 
-        size_t imageSize = texWidth * texHeight * 4;
-        bool success = vst::shm::write_to_shm(shmNameSize, imageData, pixels, imageSize);
-        stbi_image_free(pixels); // Feel free the loaded image data
+            // Make sure any previous instances are cleaned up
+            shm_unlink(shmName.c_str());
 
-        if (!success)
-            throw std::runtime_error("Failed to write image to shared memory.");
+            // Create shared memory handler for video
+            auto shmHandler = std::make_shared<vst::memory::ShmVideoHandler>();
+            if (!shmHandler->createSharedMemory(shmName, width, height, 4)) // RGBA format
+            {
+                throw std::runtime_error("Failed to create shared memory for video");
+            }
 
-        LOG_INFO("Image written to shared memory: /dev/shm" + shmNameSize);
+            // Create OpenCV window for display
+            std::string windowName = "Producer - SHM Video";
+            cv::namedWindow(windowName, cv::WINDOW_AUTOSIZE);
 
-        return;
+            // Store the shmHandler for later use
+            this->shmVideoHandler = shmHandler;
+            this->windowTitle = windowName;
+
+            // Signal that we're ready for the main loop
+            this->running = true;
+
+            LOG_INFO("Video streaming initialized in shared memory: " + shmName);
+            LOG_INFO("Video will be played in the main loop.");
+        }
+        else
+        {
+            // Your existing image handling code for SHM mode
+            vst::utils::ImageSize imageData = vst::utils::getImageSize(filePath);
+            LOG_INFO("Running in shm_open mode...");
+
+            int texWidth, texHeight, texChannels;
+            stbi_uc *pixels = stbi_load(filePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+
+            LOG_INFO("width: " + std::to_string(texWidth) + ", height: " + std::to_string(texHeight) +
+                     ", channels: " + std::to_string(texChannels));
+
+            if (!pixels)
+                throw std::runtime_error("Failed to load image for shm.");
+
+            std::string shmNameSize = "/vst_shared_texture-" + std::to_string(imageData.width) + "x" +
+                                      std::to_string(imageData.height);
+            LOG_INFO("Creating shared memory segment: " + shmNameSize);
+            this->shmName = shmNameSize;
+
+            size_t imageSize = texWidth * texHeight * 4;
+            bool success = vst::shm::write_to_shm(shmNameSize, imageData, pixels, imageSize);
+            stbi_image_free(pixels);
+
+            if (!success)
+                throw std::runtime_error("Failed to write image to shared memory.");
+
+            LOG_INFO("Image written to shared memory: /dev/shm" + shmNameSize);
+        }
     }
 
     void createDescriptorPool(VkDevice device, VkDescriptorPool &pool)
@@ -215,37 +328,160 @@ namespace vst
 
     void ProducerApp::runFrame(const std::string &filePath)
     {
-        LOG_INFO("Running shm_open producer");
-        vst::utils::ImageSize imageData = vst::utils::getImageSize(filePath);
-        LOG_INFO("Image size: " + std::to_string(imageData.width) + "x" + std::to_string(imageData.height));
-        std::string shmNameSize = "/vst_shared_texture-" + std::to_string(imageData.width) + "x" + std::to_string(imageData.height);
-        this->shmName = shmNameSize;
-        vst::shm::run_viewer(shmNameSize.c_str(), "Producer");
+        if (this->isVideo)
+        {
+            LOG_INFO("Running shm_open producer for video");
+            // For video in SHM mode, we don't need to do anything here
+            // as the separate decoding thread is handling everything
+        }
+        else
+        {
+            LOG_INFO("Running shm_open producer");
+            vst::utils::ImageSize imageData = vst::utils::getImageSize(filePath);
+            LOG_INFO("Image size: " + std::to_string(imageData.width) + "x" + std::to_string(imageData.height));
+            std::string shmNameSize = "/vst_shared_texture-" + std::to_string(imageData.width) + "x" + std::to_string(imageData.height);
+            this->shmName = shmNameSize;
+            vst::shm::run_viewer(shmNameSize.c_str(), "Producer");
+        }
     }
 
     void ProducerApp::cleanup()
     {
+        LOG_INFO("Starting cleanup process...");
+
+        // First, stop any running activity
+        running = false;
+
         if (this->mode == "dma")
         {
-            vkDestroyBuffer(context.getDevice(), vertexBuffer, nullptr);
-            vkFreeMemory(context.getDevice(), vertexBufferMemory, nullptr);
-            descriptorManager.cleanup(context.getDevice());
-            pipeline.cleanup(context.getDevice());
-            vkDestroyDescriptorPool(context.getDevice(), descriptorPool, nullptr);
-            context.cleanup();
-            LOG_INFO("Socker Name: " + this->shmName);
-            ipc::cleanup_unix_socket(this->shmName);
+            if (this->isVideo)
+            {
+                LOG_INFO("Cleaning up video resources shared in dma mode...");
+                if (videoTexture)
+                {
+                    try
+                    {
+                        videoTexture->destroy();
+                    }
+                    catch (const std::exception &e)
+                    {
+                        LOG_ERR("Error destroying video texture: " + std::string(e.what()));
+                    }
+                    videoTexture.reset();
+                }
+                if (videoLoader)
+                {
+                    try
+                    {
+                        videoLoader->close();
+                    }
+                    catch (const std::exception &e)
+                    {
+                        LOG_ERR("Error closing video loader: " + std::string(e.what()));
+                    }
+                    videoLoader.reset();
+                }
+            }
+            else
+            {
+                // Your existing DMA image cleanup code
+                LOG_INFO("Cleaning up image resources shared in dma mode...");
+                try
+                {
+                    vkDestroyBuffer(context.getDevice(), vertexBuffer, nullptr);
+                    vkFreeMemory(context.getDevice(), vertexBufferMemory, nullptr);
+                    descriptorManager.cleanup(context.getDevice());
+                    pipeline.cleanup(context.getDevice());
+                    vkDestroyDescriptorPool(context.getDevice(), descriptorPool, nullptr);
+                    context.cleanup();
+                    LOG_INFO("Socket Name: " + this->shmName);
+                    ipc::cleanup_unix_socket(this->shmName);
+                }
+                catch (const std::exception &e)
+                {
+                    LOG_ERR("Error in DMA cleanup: " + std::string(e.what()));
+                }
+            }
         }
         else if (this->mode == "shm")
         {
-            // Cleanup shared memory resources if needed
-            LOG_INFO("Cleaning up SHM resources...");
-            vst::shm::destroy_viewer(this->shmName);
+            if (this->isVideo)
+            {
+                LOG_INFO("Cleaning up video resources shared in shm mode...");
+
+                // Close any OpenCV windows
+                try
+                {
+                    cv::destroyAllWindows();
+                    cv::waitKey(1); // Process the destroy window event
+                }
+                catch (...)
+                {
+                    LOG_ERR("Error destroying OpenCV windows");
+                }
+
+                // Close the video loader
+                if (videoLoader)
+                {
+                    try
+                    {
+                        videoLoader->close();
+                    }
+                    catch (const std::exception &e)
+                    {
+                        LOG_ERR("Error closing video loader: " + std::string(e.what()));
+                    }
+                    videoLoader.reset();
+                }
+
+                // Close the shared memory handler
+                if (shmVideoHandler)
+                {
+                    try
+                    {
+                        shmVideoHandler->closeSharedMemory();
+                    }
+                    catch (const std::exception &e)
+                    {
+                        LOG_ERR("Error closing shared memory handler: " + std::string(e.what()));
+                    }
+                    shmVideoHandler.reset();
+                }
+
+                // Clean up shared memory
+                if (!this->shmName.empty())
+                {
+                    LOG_INFO("Removing shared memory segment: " + this->shmName);
+                    try
+                    {
+                        shm_unlink(this->shmName.c_str());
+                    }
+                    catch (...)
+                    {
+                        LOG_ERR("Error unlinking shared memory");
+                    }
+                }
+            }
+            else
+            {
+                // Your existing SHM image cleanup code
+                LOG_INFO("Cleaning up image resources shared in shm mode...");
+                try
+                {
+                    vst::shm::destroy_viewer(this->shmName);
+                }
+                catch (const std::exception &e)
+                {
+                    LOG_ERR("Error in SHM viewer cleanup: " + std::string(e.what()));
+                }
+            }
         }
         else
         {
-            throw std::runtime_error("Invalid cleanup mode. Use 'dma' or 'shm'.");
+            LOG_ERR("Invalid cleanup mode: " + this->mode);
         }
+
+        LOG_INFO("Cleanup completed");
     }
 
     ProducerApp::~ProducerApp()

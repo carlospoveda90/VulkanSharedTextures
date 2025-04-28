@@ -138,19 +138,19 @@ namespace vst
         pipelineInfo.renderPass = renderPass;
         pipelineInfo.subpass = 0;
 
-        try
-        {
-            vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline);
-        }
-        catch (const std::exception &e)
-        {
-            LOG_ERR("Failed to set base pipeline: " + std::string(e.what()));
-        }
-
-        // if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS)
+        // try
         // {
-        //     throw std::runtime_error("Failed to create graphics pipeline.");
+        //     vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline);
         // }
+        // catch (const std::exception &e)
+        // {
+        //     LOG_ERR("Failed to set base pipeline: " + std::string(e.what()));
+        // }
+
+        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to create graphics pipeline.");
+        }
 
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
         vkDestroyShaderModule(device, vertShaderModule, nullptr);

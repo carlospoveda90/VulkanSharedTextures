@@ -71,6 +71,7 @@ target_sources(vst_producer PRIVATE
     src/tools/benchmark.cpp
     src/utils/file_utils.cpp
     src/memory/shm_handler.cpp
+    src/memory/shm_video_handler.cpp
     src/memory/download_texture.cpp
     src/ipc/fd_passing.cpp
     src/window/glfw_window.cpp
