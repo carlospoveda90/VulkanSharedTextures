@@ -21,8 +21,15 @@ namespace vst
         texWidth = width;
         texHeight = height;
 
+        // External memory flags for DMA-BUF export
+        VkExternalMemoryImageCreateInfo extMemoryImageInfo{};
+        extMemoryImageInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+        extMemoryImageInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+        // Create image with external memory support
         VkImageCreateInfo imageInfo{};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.pNext = &extMemoryImageInfo; // Add external memory support
         imageInfo.imageType = VK_IMAGE_TYPE_2D;
         imageInfo.extent.width = texWidth;
         imageInfo.extent.height = texHeight;
@@ -44,8 +51,14 @@ namespace vst
         VkMemoryRequirements memRequirements;
         vkGetImageMemoryRequirements(context.getDevice(), image, &memRequirements);
 
+        // External memory allocation info for DMA-BUF export
+        VkExportMemoryAllocateInfo exportAllocInfo{};
+        exportAllocInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+        exportAllocInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.pNext = &exportAllocInfo; // Add export support
         allocInfo.allocationSize = memRequirements.size;
         allocInfo.memoryTypeIndex = vst::vulkan_utils::findMemoryType(context.getPhysicalDevice(),
                                                                       memRequirements.memoryTypeBits,

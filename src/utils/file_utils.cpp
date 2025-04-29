@@ -176,7 +176,8 @@ namespace vst::utils
                 try
                 {
                     resource.dimensions = parseImageDimensions(name);
-                    std::cout << "Found shared video via SHM: " << name + " (" + std::to_string(resource.dimensions.width) + "x" + std::to_string(resource.dimensions.height) + ")" << "\n";
+                    std::cout << "Found shared video via SHM: " << name + " (" + std::to_string(resource.dimensions.width) + "x" + 
+                                        std::to_string(resource.dimensions.height) + ")" << "\n";
                     return resource;
                 }
                 catch (const std::exception &e)
@@ -233,6 +234,33 @@ namespace vst::utils
                                      " (" + std::to_string(resource.dimensions.width) + "x" +
                                      std::to_string(resource.dimensions.height) + ")"
                               << "\n";
+                    return resource;
+                }
+                catch (const std::exception &e)
+                {
+                    std::cout << "Error parsing dimensions: " + std::string(e.what()) << "\n";
+                }
+            }
+        }
+
+        // Check for DMA-BUF video socket (same pattern as image but will be updated by the producer)
+        const std::regex dmaVideoPattern("vulkan_shared_video-(\\d+)x(\\d+).sock");
+        for (const auto &entry : std::filesystem::directory_iterator("/tmp"))
+        {
+            const std::string name = entry.path().filename().string();
+            if (std::regex_match(name, dmaVideoPattern))
+            {
+                resource.path = "/tmp/" + name;
+                resource.mode = "dma";
+                resource.type = "video";
+
+                // Extract dimensions from filename
+                try
+                {
+                    resource.dimensions = parseImageDimensions(name);
+                    std::cout << "Found shared video via DMA-BUF: " + name +
+                             " (" + std::to_string(resource.dimensions.width) + "x" +
+                             std::to_string(resource.dimensions.height) + ")" << "\n";
                     return resource;
                 }
                 catch (const std::exception &e)

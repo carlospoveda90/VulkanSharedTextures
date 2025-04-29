@@ -14,8 +14,8 @@
 
 namespace vst
 {
-    
-    ConsumerApp::ConsumerApp(){}
+
+    ConsumerApp::ConsumerApp() {}
 
     void createVertexBuffer(VkDevice device, VkPhysicalDevice phys, VkBuffer &buffer, VkDeviceMemory &memory, const std::vector<vst::Vertex> &vertices)
     {
@@ -248,6 +248,15 @@ namespace vst
             vst::FULLSCREEN_QUAD);
 
         LOG_INFO("DMA-BUF imported and image view created successfully.");
+
+        // For video content, we need to use a different approach
+        // This will check if the socketPath contains any video identifiers (though there aren't any right now)
+        if (socketPath.find("video") != std::string::npos)
+        {
+            LOG_INFO("DMA-BUF video detection is not yet implemented");
+            // The consumer will continuously render the texture in each frame
+            // as the producer updates it, no special handling needed here
+        }
     }
 
     ConsumerApp::ConsumerApp(const std::string &mode)

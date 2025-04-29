@@ -100,7 +100,6 @@ int main(int argc, char **argv)
     }
     else if (mode == "dma")
     {
-        // For image content in DMA mode
         if (!glfwInit())
         {
             LOG_ERR("Failed to initialize GLFW.");
@@ -109,7 +108,18 @@ int main(int argc, char **argv)
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        GLFWwindow *window = glfwCreateWindow(width, height, "Consumer DMA-BUF", nullptr, nullptr);
+        // Set up the window with the detected dimensions
+        int width = sharedResource->dimensions.width;
+        int height = sharedResource->dimensions.height;
+
+        // Add a title that shows content type (video or image)
+        std::string typeFile = sharedResource->type == "video" ? "Video" : "Image";
+        std::string windowTitle = "Consumer DMA-BUF - " + typeFile + " (" +
+                                  std::to_string(width) + "x" + std::to_string(height) + ")";
+                                  
+
+        // Create the window
+        GLFWwindow *window = glfwCreateWindow(width, height, windowTitle.c_str(), nullptr, nullptr);
         if (!window)
         {
             LOG_ERR("Failed to create GLFW window.");
@@ -117,8 +127,11 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
+        // Create consumer app
         g_app = new vst::ConsumerApp(window, mode);
 
+        // Main loop - will automatically display updated content
+        // whether it's a static image or continuously updated video frames
         while (!glfwWindowShouldClose(window) && g_running)
         {
             glfwPollEvents();
@@ -132,6 +145,4 @@ int main(int argc, char **argv)
         glfwTerminate();
         return EXIT_SUCCESS;
     }
-
-    return EXIT_FAILURE;
 }

@@ -187,7 +187,7 @@ int main(int argc, char *argv[])
             while (!glfwWindowShouldClose(glfwWindow) && g_running)
             {
                 glfwPollEvents();
-                //g_app->update();
+                g_app->update();
                 g_app->runFrame();
             }
 

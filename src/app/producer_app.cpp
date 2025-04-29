@@ -18,7 +18,7 @@
 #include "shm/shm_writer.hpp"
 #include "shm/shm_viewer.hpp"
 #include "memory/shm_handler.hpp"
-#include "memory/shm_video_handler.hpp" // Ensure the correct header for ShmVideoHandler is included
+#include "memory/shm_video_handler.hpp"
 #include "stb_image.h"
 #include "utils/file_utils.hpp"
 
@@ -67,29 +67,61 @@ namespace vst
         return true;
     }
 
+    // void ProducerApp::update()
+    // {
+    //     if (this->isVideo && this->mode == "dma" && videoTexture && videoLoader)
+    //     {
+    //         cv::Mat frame;
+    //         if (!videoLoader->grabFrame(frame))
+    //         {
+    //             // End of video reached, loop back to beginning
+    //             LOG_INFO("End of video reached, restarting...");
+    //             videoLoader->getCapture().set(cv::CAP_PROP_POS_FRAMES, 0);
+    //             return;
+    //         }
+
+    //         // Update the video texture with the new frame
+    //         try
+    //         {
+    //             videoTexture->updateFromFrame(frame);
+    //         }
+    //         catch (const std::exception &e)
+    //         {
+    //             LOG_ERR("Failed to update texture from frame: " + std::string(e.what()));
+    //         }
+    //     }
+    // }
+
     void ProducerApp::update()
     {
-        if (videoEnded)
+        if (this->isVideo && this->mode == "dma" && videoTexture && videoLoader)
         {
-            return;
-        }
+            // Add debug logging to verify this method is being called
+            static int frameCount = 0;
+            if (frameCount % 30 == 0)
+            { // Log every 30 frames
+                LOG_INFO("Updating video frame: " + std::to_string(frameCount));
+            }
 
-        cv::Mat frame;
-        if (!videoLoader->grabFrame(frame))
-        {
-            videoEnded = true;
-            std::cout << "Video ended." << std::endl;
-            return;
-        }
+            cv::Mat frame;
+            if (!videoLoader->grabFrame(frame))
+            {
+                // End of video reached, loop back to beginning
+                LOG_INFO("End of video reached, restarting...");
+                videoLoader->getCapture().set(cv::CAP_PROP_POS_FRAMES, 0);
+                return;
+            }
 
-        try
-        {
-            videoTexture->updateFromFrame(frame);
-        }
-        catch (const std::exception &e)
-        {
-            std::cerr << "Failed to update texture from frame: " << e.what() << std::endl;
-            videoEnded = true;
+            // Update the video texture with the new frame
+            try
+            {
+                videoTexture->updateFromFrame(frame);
+                frameCount++;
+            }
+            catch (const std::exception &e)
+            {
+                LOG_ERR("Failed to update texture from frame: " + std::string(e.what()));
+            }
         }
     }
 
@@ -101,11 +133,121 @@ namespace vst
 
         if (isVideo)
         {
-            LOG_INFO("Running video producer, loading: " + filePath);
-            LOG_INFO("Mode: DMA-BUF with Vulkan");
+            LOG_INFO("Running video producer in DMA-BUF mode, loading: " + filePath);
+
+            // Initialize video loader
+            videoLoader = std::make_unique<VideoLoader>();
+            if (!videoLoader->open(filePath))
+            {
+                throw std::runtime_error("Failed to open video file: " + filePath);
+            }
+
+            // Get video properties
+            cv::VideoCapture &cap = videoLoader->getCapture();
+            int width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
+            int height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+            double fps = cap.get(cv::CAP_PROP_FPS);
+            int totalFrames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+
+            LOG_INFO("Video properties: " + std::to_string(width) + "x" + std::to_string(height) +
+                     " @ " + std::to_string(fps) + " fps, " + std::to_string(totalFrames) + " frames");
+
+            // Create a video texture that will be shared via DMA-BUF
+            // First, grab a frame to initialize with
+            cv::Mat firstFrame;
+            if (!videoLoader->grabFrame(firstFrame))
+            {
+                throw std::runtime_error("Failed to read first frame from video");
+            }
+
+            // Create a texture for the video
+            videoTexture = std::make_unique<TextureVideo>(context);
+            if (!videoTexture->createFromSize(firstFrame.cols, firstFrame.rows))
+            {
+                throw std::runtime_error("Failed to create video texture");
+            }
+
+            // Reset the video to the beginning
+            videoLoader->getCapture().set(cv::CAP_PROP_POS_FRAMES, 0);
+
+            // Update texture with first frame
+            videoTexture->updateFromFrame(firstFrame);
+
+            // Setup descriptors and pipeline for rendering
+            createDescriptorPool(context.getDevice(), descriptorPool);
+
+            // Initialize descriptor manager with video texture
+            TextureImage texture;
+            texture.image = videoTexture->getImage();
+            texture.memory = videoTexture->getMemory();
+            texture.view = videoTexture->getImageView();
+            texture.sampler = videoTexture->getSampler();
+            texture.width = width;
+            texture.height = height;
+
+            descriptorManager.init(context.getDevice(), descriptorPool, texture);
+            pipeline.create(context.getDevice(), context.getSwapchainExtent(),
+                            context.getRenderPass(), descriptorManager.getLayout());
+
+            createVertexBuffer(
+                context.getDevice(),
+                context.getPhysicalDevice(),
+                vertexBuffer,
+                vertexBufferMemory,
+                FULLSCREEN_QUAD);
+
+            // Export the texture via DMA-BUF
+            VkMemoryGetFdInfoKHR getFdInfo{VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR};
+            getFdInfo.memory = videoTexture->getMemory();
+            getFdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+            auto vkGetMemoryFdKHR = reinterpret_cast<PFN_vkGetMemoryFdKHR>(
+                vkGetDeviceProcAddr(context.getDevice(), "vkGetMemoryFdKHR"));
+
+            if (!vkGetMemoryFdKHR)
+            {
+                throw std::runtime_error("vkGetMemoryFdKHR is not available on this device.");
+            }
+
+            int fd = -1;
+            if (vkGetMemoryFdKHR(context.getDevice(), &getFdInfo, &fd) != VK_SUCCESS)
+            {
+                throw std::runtime_error("Failed to export DMA-BUF for video texture.");
+            }
+
+            // Create socket to share FD with consumer
+            std::string shmName;
+            if (isVideo)
+            {
+                shmName = "/tmp/vulkan_shared_video-" + std::to_string(width) + "x" + std::to_string(height) + ".sock";
+                LOG_INFO("Creating DMA-BUF socket for video: " + shmName);
+            }
+            else
+            {
+                shmName = "/tmp/vulkan_shared-" + std::to_string(width) + "x" + std::to_string(height) + ".sock";
+                LOG_INFO("Creating DMA-BUF socket for image: " + shmName);
+            }
+            this->shmName = shmName;
+
+            std::thread([fd, this, shmName, width, height]()
+                        {
+            LOG_INFO("Waiting for consumer connection on socket...");
+            int server_fd = ipc::setup_unix_server_socket(shmName);
+            int client_fd = accept(server_fd, nullptr, nullptr);
+            if (client_fd >= 0)
+            {
+                vst::ipc::send_fd_with_info(client_fd, fd, width, height);
+                LOG_INFO("Sent FD to consumer via Unix socket.");
+                close(client_fd);
+            }
+            close(server_fd); })
+                .detach();
+
+            LOG_INFO("DMA-BUF video producer initialized");
         }
         else
         {
+            // Existing image handling code
             TextureImage texture;
             texture = ImageLoader::loadTexture(filePath, context.getDevice(), context.getPhysicalDevice(),
                                                context.getCommandPool(), context.getGraphicsQueue(), mode == "dma");
@@ -144,16 +286,16 @@ namespace vst
 
             std::thread([fd, this, shmName, texture]()
                         {
-                LOG_INFO("Waiting for consumer connection on socket...");
-                int server_fd = ipc::setup_unix_server_socket(shmName);
-                int client_fd = accept(server_fd, nullptr, nullptr);
-                if (client_fd >= 0)
-                {
-                    vst::ipc::send_fd_with_info(client_fd, fd, texture.width, texture.height);
-                    LOG_INFO("Sent FD to consumer via Unix socket.");
-                    close(client_fd);
-                }
-                close(server_fd); })
+            LOG_INFO("Waiting for consumer connection on socket...");
+            int server_fd = ipc::setup_unix_server_socket(shmName);
+            int client_fd = accept(server_fd, nullptr, nullptr);
+            if (client_fd >= 0)
+            {
+                vst::ipc::send_fd_with_info(client_fd, fd, texture.width, texture.height);
+                LOG_INFO("Sent FD to consumer via Unix socket.");
+                close(client_fd);
+            }
+            close(server_fd); })
                 .detach();
         }
     }
@@ -304,26 +446,64 @@ namespace vst
         vkUnmapMemory(device, memory);
     }
 
+    // void ProducerApp::runFrame()
+    // {
+    //     if (!pipeline.get())
+    //         // LOG_ERR("Pipeline is null");
+    //         throw std::runtime_error("drawFrame: pipeline is null");
+    //     if (!pipeline.getLayout())
+    //         // LOG_ERR("Pipeline layout is null");
+    //         throw std::runtime_error("drawFrame: pipeline layout is null");
+    //     if (!descriptorManager.getDescriptorSet())
+    //         // LOG_ERR("Descriptor set is null");
+    //         throw std::runtime_error("drawFrame: descriptorSet is null");
+    //     if (!vertexBuffer)
+    //         // LOG_ERR("Vertex buffer is null");
+    //         throw std::runtime_error("drawFrame: vertexBuffer is null");
+
+    //     context.drawFrame(
+    //         pipeline.get(),
+    //         pipeline.getLayout(),
+    //         descriptorManager.getDescriptorSet(),
+    //         vertexBuffer);
+    // }
+
     void ProducerApp::runFrame()
     {
+        // Make sure these checks are in place
         if (!pipeline.get())
-            // LOG_ERR("Pipeline is null");
-            throw std::runtime_error("drawFrame: pipeline is null");
+        {
+            LOG_ERR("Pipeline is null");
+            return;
+        }
         if (!pipeline.getLayout())
-            // LOG_ERR("Pipeline layout is null");
-            throw std::runtime_error("drawFrame: pipeline layout is null");
+        {
+            LOG_ERR("Pipeline layout is null");
+            return;
+        }
         if (!descriptorManager.getDescriptorSet())
-            // LOG_ERR("Descriptor set is null");
-            throw std::runtime_error("drawFrame: descriptorSet is null");
+        {
+            LOG_ERR("Descriptor set is null");
+            return;
+        }
         if (!vertexBuffer)
-            // LOG_ERR("Vertex buffer is null");
-            throw std::runtime_error("drawFrame: vertexBuffer is null");
+        {
+            LOG_ERR("Vertex buffer is null");
+            return;
+        }
 
-        context.drawFrame(
-            pipeline.get(),
-            pipeline.getLayout(),
-            descriptorManager.getDescriptorSet(),
-            vertexBuffer);
+        try
+        {
+            context.drawFrame(
+                pipeline.get(),
+                pipeline.getLayout(),
+                descriptorManager.getDescriptorSet(),
+                vertexBuffer);
+        }
+        catch (const std::exception &e)
+        {
+            LOG_ERR("Error in drawFrame: " + std::string(e.what()));
+        }
     }
 
     void ProducerApp::runFrame(const std::string &filePath)
@@ -357,50 +537,68 @@ namespace vst
             if (this->isVideo)
             {
                 LOG_INFO("Cleaning up video resources shared in dma mode...");
-                if (videoTexture)
-                {
-                    try
-                    {
-                        videoTexture->destroy();
-                    }
-                    catch (const std::exception &e)
-                    {
-                        LOG_ERR("Error destroying video texture: " + std::string(e.what()));
-                    }
-                    videoTexture.reset();
-                }
+
+                // Close the video loader
                 if (videoLoader)
                 {
-                    try
-                    {
-                        videoLoader->close();
-                    }
-                    catch (const std::exception &e)
-                    {
-                        LOG_ERR("Error closing video loader: " + std::string(e.what()));
-                    }
+                    videoLoader->close();
                     videoLoader.reset();
                 }
+
+                // Clean up texture resources
+                if (videoTexture)
+                {
+                    videoTexture->destroy();
+                    videoTexture.reset();
+                }
+
+                // Clean up Vulkan resources
+                if (vertexBuffer != VK_NULL_HANDLE)
+                {
+                    vkDestroyBuffer(context.getDevice(), vertexBuffer, nullptr);
+                    vertexBuffer = VK_NULL_HANDLE;
+                }
+
+                if (vertexBufferMemory != VK_NULL_HANDLE)
+                {
+                    vkFreeMemory(context.getDevice(), vertexBufferMemory, nullptr);
+                    vertexBufferMemory = VK_NULL_HANDLE;
+                }
+
+                // Clean up descriptors
+                descriptorManager.cleanup(context.getDevice());
+
+                if (descriptorPool != VK_NULL_HANDLE)
+                {
+                    vkDestroyDescriptorPool(context.getDevice(), descriptorPool, nullptr);
+                    descriptorPool = VK_NULL_HANDLE;
+                }
+
+                // Clean up pipeline
+                pipeline.cleanup(context.getDevice());
+
+                // Clean up socket
+                if (!this->shmName.empty())
+                {
+                    ipc::cleanup_unix_socket(this->shmName);
+                    LOG_INFO("Cleaned up socket: " + this->shmName);
+                }
+
+                // Clean up Vulkan context
+                context.cleanup();
             }
             else
             {
-                // Your existing DMA image cleanup code
+                // Existing image cleanup code
                 LOG_INFO("Cleaning up image resources shared in dma mode...");
-                try
-                {
-                    vkDestroyBuffer(context.getDevice(), vertexBuffer, nullptr);
-                    vkFreeMemory(context.getDevice(), vertexBufferMemory, nullptr);
-                    descriptorManager.cleanup(context.getDevice());
-                    pipeline.cleanup(context.getDevice());
-                    vkDestroyDescriptorPool(context.getDevice(), descriptorPool, nullptr);
-                    context.cleanup();
-                    LOG_INFO("Socket Name: " + this->shmName);
-                    ipc::cleanup_unix_socket(this->shmName);
-                }
-                catch (const std::exception &e)
-                {
-                    LOG_ERR("Error in DMA cleanup: " + std::string(e.what()));
-                }
+                vkDestroyBuffer(context.getDevice(), vertexBuffer, nullptr);
+                vkFreeMemory(context.getDevice(), vertexBufferMemory, nullptr);
+                descriptorManager.cleanup(context.getDevice());
+                pipeline.cleanup(context.getDevice());
+                vkDestroyDescriptorPool(context.getDevice(), descriptorPool, nullptr);
+                context.cleanup();
+                LOG_INFO("Socket Name: " + this->shmName);
+                ipc::cleanup_unix_socket(this->shmName);
             }
         }
         else if (this->mode == "shm")
