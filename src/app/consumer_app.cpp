@@ -57,15 +57,22 @@ namespace vst
         vkUnmapMemory(device, memory);
     }
 
-    ConsumerApp::ConsumerApp(GLFWwindow *window, const std::string &mode)
+    ConsumerApp::ConsumerApp(GLFWwindow *window, const std::string &mode, bool isVideo)
     {
         this->mode = mode;
         context.init(window);
         // === Socket: Receive FD from Producer ===
         LOG_INFO("Connecting to producer via socket...");
 
-        std::string socketPath = vst::utils::findLatestDmaSocket().value_or("");
-        LOG_INFO("Socket path: " + socketPath);
+        std::string socketPath;
+        if(isVideo){
+            socketPath = vst::utils::findLatestVideoDmaSocket().value_or("");
+            LOG_INFO("Video socket path: " + socketPath);
+        } else {
+            socketPath = vst::utils::find_shared_image_file().value_or("");
+            LOG_INFO("Image socket path: " + socketPath);
+        }
+
         int sock_fd = vst::ipc::connect_unix_client_socket(socketPath);
         if (sock_fd < 0)
             throw std::runtime_error("Failed to connect to producer via socket.");

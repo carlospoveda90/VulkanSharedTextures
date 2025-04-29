@@ -23,8 +23,8 @@ namespace vst::utils
     std::string getFileName(const std::string &path);
     std::string getFileExtension(const std::string &path);
     std::optional<std::string> findLatestShmFile();
-    std::optional<std::string> findLatestDmaSocket();
     std::optional<std::string> find_shared_image_file();
     std::optional<std::string> findLatestVideoShmFile();
+    std::optional<std::string> findLatestVideoDmaSocket();
     std::optional<SharedResource> findSharedResource();
 }

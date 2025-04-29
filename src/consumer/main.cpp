@@ -109,14 +109,13 @@ int main(int argc, char **argv)
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
         // Set up the window with the detected dimensions
-        int width = sharedResource->dimensions.width;
-        int height = sharedResource->dimensions.height;
+        // int width = sharedResource->dimensions.width;
+        // int height = sharedResource->dimensions.height;
 
         // Add a title that shows content type (video or image)
         std::string typeFile = sharedResource->type == "video" ? "Video" : "Image";
         std::string windowTitle = "Consumer DMA-BUF - " + typeFile + " (" +
                                   std::to_string(width) + "x" + std::to_string(height) + ")";
-                                  
 
         // Create the window
         GLFWwindow *window = glfwCreateWindow(width, height, windowTitle.c_str(), nullptr, nullptr);
@@ -128,7 +127,7 @@ int main(int argc, char **argv)
         }
 
         // Create consumer app
-        g_app = new vst::ConsumerApp(window, mode);
+        g_app = new vst::ConsumerApp(window, mode, sharedResource->type == "video" ? true : false);
 
         // Main loop - will automatically display updated content
         // whether it's a static image or continuously updated video frames

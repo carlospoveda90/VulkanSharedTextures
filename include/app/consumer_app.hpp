@@ -17,7 +17,7 @@ namespace vst
     public:
         ConsumerApp();
         ConsumerApp(const std::string &mode);
-        ConsumerApp(GLFWwindow *window, const std::string &mode);
+        ConsumerApp(GLFWwindow *window, const std::string &mode, bool isVideo);
         ~ConsumerApp();
 
         void runFrame();

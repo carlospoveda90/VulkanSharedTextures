@@ -72,10 +72,10 @@ namespace vst::utils
         return std::nullopt; // not found
     }
 
-    std::optional<std::string> findLatestDmaSocket()
+    std::optional<std::string> findLatestVideoDmaSocket()
     {
-        std::string prefix = "/tmp/vulkan_shared-";
-        std::regex pattern("vulkan_shared-(\\d+)x(\\d+).sock");
+        std::string prefix = "/tmp/vulkan_shared_";
+        std::regex pattern("vulkan_shared_video-(\\d+)x(\\d+).sock");
 
         for (const auto &entry : std::filesystem::directory_iterator("/tmp"))
         {
@@ -131,7 +131,7 @@ namespace vst::utils
     std::optional<std::string> find_shared_image_file()
     {
         const std::regex shmPattern("vst_shared_texture-(\\d+)x(\\d+)");
-        const std::regex dmaPattern("vulkan_shared-(\\d+)x(\\d+).sock");
+        const std::regex dmaPattern("vulkan_shared_image-(\\d+)x(\\d+).sock");
 
         // Check SHM in /dev/shm
         for (const auto &entry : std::filesystem::directory_iterator("/dev/shm"))
@@ -216,7 +216,7 @@ namespace vst::utils
         }
 
         // Check for DMA-BUF socket (image only, as video is not implemented for DMA)
-        const std::regex dmaPattern("vulkan_shared-(\\d+)x(\\d+).sock");
+        const std::regex dmaPattern("vulkan_shared_image-(\\d+)x(\\d+).sock");
         for (const auto &entry : std::filesystem::directory_iterator("/tmp"))
         {
             const std::string name = entry.path().filename().string();

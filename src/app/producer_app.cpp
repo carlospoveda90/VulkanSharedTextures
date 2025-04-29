@@ -216,17 +216,17 @@ namespace vst
             }
 
             // Create socket to share FD with consumer
-            std::string shmName;
-            if (isVideo)
-            {
-                shmName = "/tmp/vulkan_shared_video-" + std::to_string(width) + "x" + std::to_string(height) + ".sock";
-                LOG_INFO("Creating DMA-BUF socket for video: " + shmName);
-            }
-            else
-            {
-                shmName = "/tmp/vulkan_shared-" + std::to_string(width) + "x" + std::to_string(height) + ".sock";
-                LOG_INFO("Creating DMA-BUF socket for image: " + shmName);
-            }
+            // std::string shmName;
+            // if (isVideo)
+            // {
+            std::string shmName = "/tmp/vulkan_shared_video-" + std::to_string(width) + "x" + std::to_string(height) + ".sock";
+            LOG_INFO("Creating DMA-BUF socket for video: " + shmName);
+            // }
+            // else
+            // {
+            //     shmName = "/tmp/vulkan_shared-" + std::to_string(width) + "x" + std::to_string(height) + ".sock";
+            //     LOG_INFO("Creating DMA-BUF socket for image: " + shmName);
+            // }
             this->shmName = shmName;
 
             std::thread([fd, this, shmName, width, height]()
@@ -280,7 +280,7 @@ namespace vst
                 throw std::runtime_error("Failed to export DMA-BUF.");
             }
 
-            std::string shmName = "/tmp/vulkan_shared-" + std::to_string(texture.width) + "x" + std::to_string(texture.height) + ".sock";
+            std::string shmName = "/tmp/vulkan_shared_image-" + std::to_string(texture.width) + "x" + std::to_string(texture.height) + ".sock";
             LOG_INFO("Creating shared memory segment: " + shmName);
             this->shmName = shmName;
 
