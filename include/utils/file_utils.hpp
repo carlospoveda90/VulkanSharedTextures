@@ -10,6 +10,13 @@ namespace vst::utils
         int height;
         int channels;
     };
+    struct SharedResource
+    {
+        std::string path;
+        std::string mode;
+        std::string type;
+        vst::utils::ImageSize dimensions; 
+    };
 
     ImageSize getImageSize(const std::string &imagePath);
     ImageSize parseImageDimensions(const std::string &filename);
@@ -18,4 +25,6 @@ namespace vst::utils
     std::optional<std::string> findLatestShmFile();
     std::optional<std::string> findLatestDmaSocket();
     std::optional<std::string> find_shared_image_file();
+    std::optional<std::string> findLatestVideoShmFile();
+    std::optional<SharedResource> findSharedResource();
 }

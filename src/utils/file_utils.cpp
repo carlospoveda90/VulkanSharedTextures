@@ -10,6 +10,8 @@
 #include <regex>
 #include <filesystem>
 
+namespace fs = std::filesystem;
+
 namespace vst::utils
 {
     ImageSize getImageSize(const std::string &imagePath)
@@ -86,6 +88,46 @@ namespace vst::utils
         return std::nullopt;
     }
 
+    std::optional<std::string> findLatestVideoShmFile()
+    {
+        std::string basePath = "/dev/shm";
+        std::regex videoPattern("vst_shared_video-(\\d+)x(\\d+)");
+        std::vector<fs::directory_entry> matches;
+
+        try
+        {
+            for (const auto &entry : fs::directory_iterator(basePath))
+            {
+                std::string filename = entry.path().filename().string();
+                if (std::regex_match(filename, videoPattern))
+                {
+                    matches.push_back(entry);
+                }
+            }
+        }
+        catch (const fs::filesystem_error &e)
+        {
+            std::cout << "[INFO] Filesystem error: " << e.what() << "\n";
+            return std::nullopt;
+        }
+
+        // Sort by modification time (newest first)
+        std::sort(matches.begin(), matches.end(),
+                  [](const fs::directory_entry &a, const fs::directory_entry &b)
+                  {
+                      return fs::last_write_time(a) > fs::last_write_time(b);
+                  });
+
+        if (!matches.empty())
+        {
+            std::string path = matches[0].path().filename().string();
+            std::cout << "[INFO] Found video shared memory: " << path << "\n";
+            return path;
+        }
+
+        return std::nullopt;
+    }
+
     std::optional<std::string> find_shared_image_file()
     {
         const std::regex shmPattern("vst_shared_texture-(\\d+)x(\\d+)");
@@ -112,6 +154,95 @@ namespace vst::utils
             }
         }
 
+        return std::nullopt;
+    }
+
+    std::optional<SharedResource> findSharedResource()
+    {
+        SharedResource resource;
+
+        // Check for SHM video first
+        const std::regex shmVideoPattern("vst_shared_video-(\\d+)x(\\d+)");
+        for (const auto &entry : std::filesystem::directory_iterator("/dev/shm"))
+        {
+            const std::string name = entry.path().filename().string();
+            if (std::regex_match(name, shmVideoPattern))
+            {
+                resource.path = entry.path().string();
+                resource.mode = "shm";
+                resource.type = "video";
+
+                // Extract dimensions from filename
+                try
+                {
+                    resource.dimensions = parseImageDimensions(name);
+                    std::cout << "Found shared video via SHM: " << name + " (" + std::to_string(resource.dimensions.width) + "x" + std::to_string(resource.dimensions.height) + ")" << "\n";
+                    return resource;
+                }
+                catch (const std::exception &e)
+                {
+                    std::cout << "Error parsing dimensions: " + std::string(e.what()) << "\n";
+                }
+            }
+        }
+
+        // Check for SHM image
+        const std::regex shmImagePattern("vst_shared_texture-(\\d+)x(\\d+)");
+        for (const auto &entry : std::filesystem::directory_iterator("/dev/shm"))
+        {
+            const std::string name = entry.path().filename().string();
+            if (std::regex_match(name, shmImagePattern))
+            {
+                resource.path = entry.path().string();
+                resource.mode = "shm";
+                resource.type = "image";
+
+                // Extract dimensions from filename
+                try
+                {
+                    resource.dimensions = parseImageDimensions(name);
+                    std::cout << "Found shared image via SHM: " + name +
+                                     " (" + std::to_string(resource.dimensions.width) + "x" +
+                                     std::to_string(resource.dimensions.height) + ")"
+                              << "\n";
+                    return resource;
+                }
+                catch (const std::exception &e)
+                {
+                    std::cout << "Error parsing dimensions: " + std::string(e.what()) << "\n";
+                }
+            }
+        }
+
+        // Check for DMA-BUF socket (image only, as video is not implemented for DMA)
+        const std::regex dmaPattern("vulkan_shared-(\\d+)x(\\d+).sock");
+        for (const auto &entry : std::filesystem::directory_iterator("/tmp"))
+        {
+            const std::string name = entry.path().filename().string();
+            if (std::regex_match(name, dmaPattern))
+            {
+                resource.path = "/tmp/" + name;
+                resource.mode = "dma";
+                resource.type = "image";
+
+                // Extract dimensions from filename
+                try
+                {
+                    resource.dimensions = parseImageDimensions(name);
+                    std::cout << "Found shared image via DMA-BUF: " + name +
+                                     " (" + std::to_string(resource.dimensions.width) + "x" +
+                                     std::to_string(resource.dimensions.height) + ")"
+                              << "\n";
+                    return resource;
+                }
+                catch (const std::exception &e)
+                {
+                    std::cout << "Error parsing dimensions: " + std::string(e.what()) << "\n";
+                }
+            }
+        }
+
+        // Nothing found
         return std::nullopt;
     }
 

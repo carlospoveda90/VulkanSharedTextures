@@ -8,13 +8,15 @@ namespace vst::utils
 
     std::string detect_producer_mode()
     {
-        auto pathOpt = find_shared_image_file(); // from earlier utility
-        if (!pathOpt.has_value())
+        std::optional<SharedResource> pathOpt = findSharedResource();
+
+        // if (!pathOpt.has_value())
+        if (!pathOpt->path.empty())
         {
             throw std::runtime_error("Failed to detect producer mode: no known resources found.");
         }
 
-        const std::string &path = *pathOpt;
+        const std::string &path = pathOpt->path;
 
         if (path.find("/dev/shm/") == 0)
         {

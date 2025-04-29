@@ -84,6 +84,7 @@ add_executable(vst_consumer
     src/app/consumer_app.cpp
     src/shm/shm_writer.cpp
     src/shm/shm_viewer.cpp
+    src/memory/shm_video_handler.cpp
     src/utils/file_utils.cpp
     src/media/texture_image.cpp
     src/media/texture_video.cpp

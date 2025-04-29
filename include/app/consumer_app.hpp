@@ -4,18 +4,33 @@
 #include "core/pipeline.hpp"
 #include "core/descriptor_manager.hpp"
 #include "core/vertex_definitions.hpp"
+#include "memory/shm_video_handler.hpp"
+#include <opencv2/opencv.hpp>
+#include <atomic>
+#include <string>
+#include <memory>
 
 namespace vst
 {
     class ConsumerApp
     {
     public:
+        ConsumerApp();
         ConsumerApp(const std::string &mode);
         ConsumerApp(GLFWwindow *window, const std::string &mode);
         ~ConsumerApp();
 
         void runFrame();
         void cleanup();
+
+        // New method for SHM video consumption
+        bool consumeShmVideo(const std::string &shmName);
+
+        // Run the video loop for SHM video
+        void runVideoLoop();
+
+        // Check if video consumption is still running
+        bool isVideoRunning() const { return m_videoRunning; }
 
     private:
         VulkanContext context;
@@ -32,9 +47,15 @@ namespace vst
         Pipeline pipeline;
         std::string mode;
         std::string shmName;
+        bool isVideo = false;
 
         VkBuffer vertexBuffer = VK_NULL_HANDLE;
         VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
-    };
 
+        // Video-specific members
+        std::shared_ptr<memory::ShmVideoHandler> m_shmVideoHandler;
+        std::string m_videoWindowTitle;
+        std::atomic<bool> m_videoRunning{false};
+        double m_videoFrameRate = 30.0;
+    };
 }

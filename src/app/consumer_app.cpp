@@ -6,6 +6,7 @@
 #include <vulkan/vulkan.h>
 #include <cstring>
 #include <fcntl.h>
+#include <thread>
 #include <unistd.h>
 #include "ipc/fd_passing.hpp"
 #include "shm/shm_viewer.hpp"
@@ -13,6 +14,9 @@
 
 namespace vst
 {
+    
+    ConsumerApp::ConsumerApp(){}
+
     void createVertexBuffer(VkDevice device, VkPhysicalDevice phys, VkBuffer &buffer, VkDeviceMemory &memory, const std::vector<vst::Vertex> &vertices)
     {
         VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
@@ -59,9 +63,9 @@ namespace vst
         context.init(window);
         // === Socket: Receive FD from Producer ===
         LOG_INFO("Connecting to producer via socket...");
-        
+
         std::string socketPath = vst::utils::findLatestDmaSocket().value_or("");
-        LOG_INFO("Socket path: " + socketPath); 
+        LOG_INFO("Socket path: " + socketPath);
         int sock_fd = vst::ipc::connect_unix_client_socket(socketPath);
         if (sock_fd < 0)
             throw std::runtime_error("Failed to connect to producer via socket.");
@@ -260,6 +264,147 @@ namespace vst
         return;
     }
 
+    bool vst::ConsumerApp::consumeShmVideo(const std::string &shmName)
+    {
+        LOG_INFO("Initializing SHM video consumer for: " + shmName);
+
+        // Store the shared memory name
+        this->shmName = shmName;
+
+        // Create window title
+        m_videoWindowTitle = "Consumer - SHM Video";
+
+        // Create shared memory handler
+        m_shmVideoHandler = std::make_shared<memory::ShmVideoHandler>();
+
+        // Open the shared memory segment
+        if (!m_shmVideoHandler->openSharedMemory(shmName))
+        {
+            LOG_ERR("Failed to open shared memory segment: " + shmName);
+            return false;
+        }
+
+        // Get frame properties from shared memory header
+        const auto &metadata = m_shmVideoHandler->getFrameMetadata();
+        m_videoFrameRate = metadata.fps > 0 ? metadata.fps : 30.0;
+
+        LOG_INFO("Opened shared memory for video: " + shmName +
+                 " (dimensions: " + std::to_string(metadata.width) + "x" +
+                 std::to_string(metadata.height) + ")");
+
+        // Create window for display
+        cv::namedWindow(m_videoWindowTitle, cv::WINDOW_AUTOSIZE);
+
+        // Set running flag
+        m_videoRunning = true;
+
+        LOG_INFO("Video consumer initialized");
+        return true;
+    }
+
+    void vst::ConsumerApp::runVideoLoop()
+    {
+        if (!m_shmVideoHandler || !m_videoRunning)
+        {
+            LOG_ERR("Cannot run video loop - video consumer not initialized");
+            return;
+        }
+
+        LOG_INFO("Starting video consumer loop");
+
+        // Calculate frame delay based on frame rate
+        int frameDelay = std::max(1, static_cast<int>(1000.0 / m_videoFrameRate));
+
+        // Main loop
+        cv::Mat frame;
+        size_t frameCount = 0;
+        uint64_t lastTimestamp = 0;
+
+        while (m_videoRunning)
+        {
+            // Measure the start time of this frame processing
+            auto frameStart = std::chrono::steady_clock::now();
+
+            // Try to read a frame from shared memory
+            bool frameRead = false;
+            try
+            {
+                frameRead = m_shmVideoHandler->readFrame(frame, true);
+            }
+            catch (const std::exception &e)
+            {
+                LOG_ERR("Error reading frame: " + std::string(e.what()));
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            }
+
+            if (!frameRead)
+            {
+                // Check if end of video was signaled
+                const auto &metadata = m_shmVideoHandler->getFrameMetadata();
+                if (metadata.isEndOfVideo)
+                {
+                    LOG_INFO("End of video signaled by producer");
+                    break;
+                }
+
+                // No new frame yet, sleep briefly and try again
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+
+            // Display the frame
+            if (!frame.empty())
+            {
+                // Convert to BGR for display if needed
+                cv::Mat displayFrame;
+                if (frame.channels() == 4)
+                {
+                    cv::cvtColor(frame, displayFrame, cv::COLOR_RGBA2BGR);
+                    cv::imshow(m_videoWindowTitle, displayFrame);
+                }
+                else
+                {
+                    cv::imshow(m_videoWindowTitle, frame);
+                }
+            }
+
+            // Process window events and check for key press
+            int key = cv::waitKey(1);
+            if (key == 27 || key == 'q') // ESC or 'q' key
+            {
+                LOG_INFO("User pressed exit key");
+                m_videoRunning = false;
+                break;
+            }
+
+            // Measure how long this frame took to process
+            auto frameEnd = std::chrono::steady_clock::now();
+            auto processingTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      frameEnd - frameStart)
+                                      .count();
+
+            // Sleep for the remaining time to maintain frame rate
+            int remainingTime = frameDelay - static_cast<int>(processingTime);
+            if (remainingTime > 0)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(remainingTime));
+            }
+
+            // Log progress every 100 frames
+            frameCount++;
+            if (frameCount % 100 == 0)
+            {
+                LOG_INFO("Consumed " + std::to_string(frameCount) + " frames");
+            }
+        }
+
+        // Clean up
+        cv::destroyAllWindows();
+
+        LOG_INFO("Video consumer loop ended after " + std::to_string(frameCount) + " frames");
+    }
+
     void ConsumerApp::runFrame()
     {
         context.drawFrame(
@@ -269,40 +414,93 @@ namespace vst
             vertexBuffer);
     }
 
-    void ConsumerApp::cleanup()
+    // Replace or update your existing cleanup method in consumer_app.cpp
+
+    void vst::ConsumerApp::cleanup()
     {
         if (this->mode == "dma")
         {
+            // Your existing DMA cleanup code
             if (importedImageView)
             {
                 vkDestroyImageView(context.getDevice(), importedImageView, nullptr);
+                importedImageView = VK_NULL_HANDLE;
             }
             if (importedImage)
             {
                 vkDestroyImage(context.getDevice(), importedImage, nullptr);
+                importedImage = VK_NULL_HANDLE;
             }
             if (importedMemory)
             {
                 vkFreeMemory(context.getDevice(), importedMemory, nullptr);
+                importedMemory = VK_NULL_HANDLE;
             }
             if (vertexBuffer)
             {
                 vkDestroyBuffer(context.getDevice(), vertexBuffer, nullptr);
                 vkFreeMemory(context.getDevice(), vertexBufferMemory, nullptr);
+                vertexBuffer = VK_NULL_HANDLE;
+                vertexBufferMemory = VK_NULL_HANDLE;
             }
             if (descriptorPool)
             {
                 descriptorManager.cleanup(context.getDevice());
                 vkDestroyDescriptorPool(context.getDevice(), descriptorPool, nullptr);
+                descriptorPool = VK_NULL_HANDLE;
             }
             pipeline.cleanup(context.getDevice());
             context.cleanup();
         }
         else if (this->mode == "shm")
         {
-            // Cleanup for shm mode
-            LOG_INFO("Cleaning up SHM viewer...");
-            vst::shm::destroy_viewer(this->shmName);
+            // Check if this is a video consumer
+            if (m_shmVideoHandler && m_videoRunning)
+            {
+                LOG_INFO("Cleaning up SHM video resources...");
+
+                // Stop the video loop
+                m_videoRunning = false;
+
+                // Destroy any open OpenCV windows
+                try
+                {
+                    cv::destroyAllWindows();
+                }
+                catch (...)
+                {
+                    LOG_INFO("Error destroying OpenCV windows");
+                }
+
+                // Close the shared memory handler
+                try
+                {
+                    if (m_shmVideoHandler)
+                    {
+                        m_shmVideoHandler->closeSharedMemory();
+                        m_shmVideoHandler.reset();
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    LOG_INFO("Error closing shared memory: " + std::string(e.what()));
+                }
+
+                LOG_INFO("SHM video resources cleaned up");
+            }
+            else
+            {
+                // Regular SHM image cleanup
+                LOG_INFO("Cleaning up SHM viewer...");
+                try
+                {
+                    vst::shm::destroy_viewer(this->shmName);
+                }
+                catch (const std::exception &e)
+                {
+                    LOG_INFO("Error destroying SHM viewer: " + std::string(e.what()));
+                }
+            }
         }
     }
 
