@@ -36,10 +36,7 @@ namespace vst
         void cleanup();
 
         // Video methods
-        bool initialize(const std::string &videoPath);
         void update();
-
-        // Accessors for non-threaded implementation
         VideoLoader *getVideoLoader() { return videoLoader.get(); }
         std::shared_ptr<memory::ShmVideoHandler> getSharedMemoryHandler() { return shmVideoHandler; }
         std::string getWindowTitle() { return windowTitle; }
@@ -71,5 +68,4 @@ namespace vst
         VkBuffer vertexBuffer = VK_NULL_HANDLE;
         VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
     };
-
 }

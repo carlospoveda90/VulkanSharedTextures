@@ -37,61 +37,6 @@ namespace vst
     {
     }
 
-    bool ProducerApp::initialize(const std::string &videoPath)
-    {
-        videoLoader = std::make_unique<VideoLoader>();
-
-        if (!videoLoader->open(videoPath))
-        {
-            std::cerr << "Failed to open video: " << videoPath << std::endl;
-            return false;
-        }
-
-        cv::Mat firstFrame;
-        if (!videoLoader->grabFrame(firstFrame))
-        {
-            std::cerr << "Failed to read first frame from video" << std::endl;
-            return false;
-        }
-
-        videoTexture = std::make_unique<TextureVideo>(context);
-
-        if (!videoTexture->createFromSize(firstFrame.cols, firstFrame.rows))
-        {
-            std::cerr << "Failed to create video texture" << std::endl;
-            return false;
-        }
-
-        videoTexture->updateFromFrame(firstFrame);
-
-        return true;
-    }
-
-    // void ProducerApp::update()
-    // {
-    //     if (this->isVideo && this->mode == "dma" && videoTexture && videoLoader)
-    //     {
-    //         cv::Mat frame;
-    //         if (!videoLoader->grabFrame(frame))
-    //         {
-    //             // End of video reached, loop back to beginning
-    //             LOG_INFO("End of video reached, restarting...");
-    //             videoLoader->getCapture().set(cv::CAP_PROP_POS_FRAMES, 0);
-    //             return;
-    //         }
-
-    //         // Update the video texture with the new frame
-    //         try
-    //         {
-    //             videoTexture->updateFromFrame(frame);
-    //         }
-    //         catch (const std::exception &e)
-    //         {
-    //             LOG_ERR("Failed to update texture from frame: " + std::string(e.what()));
-    //         }
-    //     }
-    // }
-
     void ProducerApp::update()
     {
         if (this->isVideo && this->mode == "dma" && videoTexture && videoLoader)
@@ -215,18 +160,8 @@ namespace vst
                 throw std::runtime_error("Failed to export DMA-BUF for video texture.");
             }
 
-            // Create socket to share FD with consumer
-            // std::string shmName;
-            // if (isVideo)
-            // {
             std::string shmName = "/tmp/vulkan_shared_video-" + std::to_string(width) + "x" + std::to_string(height) + ".sock";
             LOG_INFO("Creating DMA-BUF socket for video: " + shmName);
-            // }
-            // else
-            // {
-            //     shmName = "/tmp/vulkan_shared-" + std::to_string(width) + "x" + std::to_string(height) + ".sock";
-            //     LOG_INFO("Creating DMA-BUF socket for image: " + shmName);
-            // }
             this->shmName = shmName;
 
             std::thread([fd, this, shmName, width, height]()
@@ -342,7 +277,7 @@ namespace vst
             }
 
             // Create OpenCV window for display
-            std::string windowName = "Producer - SHM Video";
+            std::string windowName = "Producer - SHM Video " + std::to_string(width) + "x" + std::to_string(height);
             cv::namedWindow(windowName, cv::WINDOW_AUTOSIZE);
 
             // Store the shmHandler for later use
@@ -445,28 +380,6 @@ namespace vst
         memcpy(data, vertices.data(), (size_t)bufferSize);
         vkUnmapMemory(device, memory);
     }
-
-    // void ProducerApp::runFrame()
-    // {
-    //     if (!pipeline.get())
-    //         // LOG_ERR("Pipeline is null");
-    //         throw std::runtime_error("drawFrame: pipeline is null");
-    //     if (!pipeline.getLayout())
-    //         // LOG_ERR("Pipeline layout is null");
-    //         throw std::runtime_error("drawFrame: pipeline layout is null");
-    //     if (!descriptorManager.getDescriptorSet())
-    //         // LOG_ERR("Descriptor set is null");
-    //         throw std::runtime_error("drawFrame: descriptorSet is null");
-    //     if (!vertexBuffer)
-    //         // LOG_ERR("Vertex buffer is null");
-    //         throw std::runtime_error("drawFrame: vertexBuffer is null");
-
-    //     context.drawFrame(
-    //         pipeline.get(),
-    //         pipeline.getLayout(),
-    //         descriptorManager.getDescriptorSet(),
-    //         vertexBuffer);
-    // }
 
     void ProducerApp::runFrame()
     {
@@ -684,7 +597,6 @@ namespace vst
 
     ProducerApp::~ProducerApp()
     {
-        // stopVideoStreaming();
         cleanup();
     }
 

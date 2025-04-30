@@ -148,6 +148,7 @@ int main(int argc, char *argv[])
 
             // Create a window without OpenGL context
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+            std::string titleWindow;
 
             if (isVideo)
             {
@@ -160,6 +161,7 @@ int main(int argc, char *argv[])
                 }
                 windowWidth = videoInfo.width;
                 windowHeight = videoInfo.height;
+                titleWindow = "Producer DMA-BUF - Video (" + std::to_string(windowWidth) + "x" + std::to_string(windowHeight) + ")";
                 std::cout << "Video resolution: " << windowWidth << "x" << windowHeight << "\n";
             }
             else
@@ -168,9 +170,11 @@ int main(int argc, char *argv[])
                 vst::utils::ImageSize imageData = vst::utils::getImageSize(filePath);
                 windowWidth = imageData.width;
                 windowHeight = imageData.height;
+                titleWindow = "Producer DMA-BUF - Image (" + std::to_string(windowWidth) + "x" + std::to_string(windowHeight) + ")";
+                std::cout << "Image resolution: " << windowWidth << "x" << windowHeight << "\n";
             }
 
-            window = std::make_shared<vst::GLFWWindowWrapper>(windowWidth, windowHeight, "Producer DMA-BUF");
+            window = std::make_shared<vst::GLFWWindowWrapper>(windowWidth, windowHeight, titleWindow.c_str());
             GLFWwindow *glfwWindow = static_cast<GLFWwindow *>(window->getNativeHandle());
             if (!glfwWindow)
             {
@@ -315,7 +319,7 @@ int main(int argc, char *argv[])
     try
     {
         g_app->cleanup();
-        delete g_app;
+        //delete g_app;
         g_app = nullptr;
     }
     catch (const std::exception &e)

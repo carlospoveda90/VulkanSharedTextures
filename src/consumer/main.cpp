@@ -108,10 +108,6 @@ int main(int argc, char **argv)
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        // Set up the window with the detected dimensions
-        // int width = sharedResource->dimensions.width;
-        // int height = sharedResource->dimensions.height;
-
         // Add a title that shows content type (video or image)
         std::string typeFile = sharedResource->type == "video" ? "Video" : "Image";
         std::string windowTitle = "Consumer DMA-BUF - " + typeFile + " (" +
@@ -138,7 +134,8 @@ int main(int argc, char **argv)
         }
 
         // Clean up
-        delete g_app;
+        g_app->cleanup();
+        // delete g_app;
 
         glfwDestroyWindow(window);
         glfwTerminate();

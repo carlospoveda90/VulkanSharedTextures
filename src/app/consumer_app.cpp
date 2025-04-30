@@ -65,10 +65,13 @@ namespace vst
         LOG_INFO("Connecting to producer via socket...");
 
         std::string socketPath;
-        if(isVideo){
+        if (isVideo)
+        {
             socketPath = vst::utils::findLatestVideoDmaSocket().value_or("");
             LOG_INFO("Video socket path: " + socketPath);
-        } else {
+        }
+        else
+        {
             socketPath = vst::utils::find_shared_image_file().value_or("");
             LOG_INFO("Image socket path: " + socketPath);
         }
@@ -287,9 +290,6 @@ namespace vst
         // Store the shared memory name
         this->shmName = shmName;
 
-        // Create window title
-        m_videoWindowTitle = "Consumer - SHM Video";
-
         // Create shared memory handler
         m_shmVideoHandler = std::make_shared<memory::ShmVideoHandler>();
 
@@ -304,9 +304,12 @@ namespace vst
         const auto &metadata = m_shmVideoHandler->getFrameMetadata();
         m_videoFrameRate = metadata.fps > 0 ? metadata.fps : 30.0;
 
-        LOG_INFO("Opened shared memory for video: " + shmName +
-                 " (dimensions: " + std::to_string(metadata.width) + "x" +
-                 std::to_string(metadata.height) + ")");
+        std::string videoSize = std::to_string(metadata.width) + "x" + std::to_string(metadata.height);
+
+        // Create window title
+        m_videoWindowTitle = "Consumer - SHM Video " + videoSize;
+
+        LOG_INFO("Opened shared memory for video: " + shmName + " (dimensions: " + videoSize + ")");
 
         // Create window for display
         cv::namedWindow(m_videoWindowTitle, cv::WINDOW_AUTOSIZE);

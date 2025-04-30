@@ -37,7 +37,7 @@ namespace vst::utils
         uint32_t width = static_cast<uint32_t>(std::stoi(widthStr));
         uint32_t height = static_cast<uint32_t>(std::stoi(heightStr));
 
-        return {static_cast<int>(width), static_cast<int>(height), 0}; // Assuming channels is not needed here
+        return {static_cast<int>(width), static_cast<int>(height), 0};
     }
 
     std::string getFileName(const std::string &path)
@@ -147,7 +147,7 @@ namespace vst::utils
         for (const auto &entry : std::filesystem::directory_iterator("/tmp"))
         {
             const std::string name = entry.path().filename().string();
-            std::cout << "[DMA] File : " << name << '\n';
+            // std::cout << "[DMA] File : " << name << '\n';
             if (std::regex_match(name, dmaPattern))
             {
                 return std::string("/tmp/") + name;
