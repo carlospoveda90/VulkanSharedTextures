@@ -312,7 +312,8 @@ namespace vst
         LOG_INFO("Opened shared memory for video: " + shmName + " (dimensions: " + videoSize + ")");
 
         // Create window for display
-        cv::namedWindow(m_videoWindowTitle, cv::WINDOW_AUTOSIZE);
+        cv::namedWindow(m_videoWindowTitle, cv::WINDOW_NORMAL | cv::WINDOW_GUI_NORMAL);
+        cv::resizeWindow(m_videoWindowTitle, metadata.width, metadata.height);
 
         // Set running flag
         m_videoRunning = true;
@@ -396,6 +397,13 @@ namespace vst
                 m_videoRunning = false;
                 break;
             }
+
+             // If user clicks the X (closes the window)
+             if (cv::getWindowProperty(m_videoWindowTitle, cv::WND_PROP_VISIBLE) < 1)
+             {
+                 std::cout << "Window was closed by user" << std::endl;
+                 break;
+             }
 
             // Measure how long this frame took to process
             auto frameEnd = std::chrono::steady_clock::now();

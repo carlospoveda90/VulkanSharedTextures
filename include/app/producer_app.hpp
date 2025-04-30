@@ -42,6 +42,7 @@ namespace vst
         std::string getWindowTitle() { return windowTitle; }
 
         bool isDecodingDone() const { return decodingDone; }
+        bool isRunning() const { return running; }
 
     private:
         FrameQueue frameQueue;

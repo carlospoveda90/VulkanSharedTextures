@@ -200,14 +200,6 @@ int main(int argc, char *argv[])
         }
         else if (mode == "shm")
         {
-            // Initialize OpenCV window system before starting
-            if (isVideo)
-            {
-                cv::namedWindow("Init", cv::WINDOW_AUTOSIZE);
-                cv::destroyWindow("Init");
-                cv::waitKey(1);
-            }
-
             g_app->ProducerSHM(filePath, mode, isVideo);
 
             if (isVideo)
@@ -272,6 +264,13 @@ int main(int argc, char *argv[])
                         break;
                     }
 
+                    // If user clicks the X (closes the window)
+                    if (cv::getWindowProperty(g_app->getWindowTitle(), cv::WND_PROP_VISIBLE) < 1)
+                    {
+                        std::cout << "Window was closed by user" << std::endl;
+                        break;
+                    }
+
                     // Measure how long this frame took to process
                     auto frameEnd = std::chrono::steady_clock::now();
                     auto processingTime = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -319,7 +318,7 @@ int main(int argc, char *argv[])
     try
     {
         g_app->cleanup();
-        //delete g_app;
+        // delete g_app;
         g_app = nullptr;
     }
     catch (const std::exception &e)

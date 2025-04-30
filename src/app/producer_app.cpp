@@ -278,7 +278,8 @@ namespace vst
 
             // Create OpenCV window for display
             std::string windowName = "Producer - SHM Video " + std::to_string(width) + "x" + std::to_string(height);
-            cv::namedWindow(windowName, cv::WINDOW_AUTOSIZE);
+            cv::namedWindow(windowName, cv::WINDOW_NORMAL | cv::WINDOW_GUI_NORMAL);
+            cv::resizeWindow(windowName, width, height);
 
             // Store the shmHandler for later use
             this->shmVideoHandler = shmHandler;
