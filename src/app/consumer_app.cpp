@@ -398,12 +398,12 @@ namespace vst
                 break;
             }
 
-             // If user clicks the X (closes the window)
-             if (cv::getWindowProperty(m_videoWindowTitle, cv::WND_PROP_VISIBLE) < 1)
-             {
-                 std::cout << "Window was closed by user" << std::endl;
-                 break;
-             }
+            // If user clicks the X (closes the window)
+            if (cv::getWindowProperty(m_videoWindowTitle, cv::WND_PROP_VISIBLE) < 1)
+            {
+                std::cout << "Window was closed by user" << std::endl;
+                break;
+            }
 
             // Measure how long this frame took to process
             auto frameEnd = std::chrono::steady_clock::now();
