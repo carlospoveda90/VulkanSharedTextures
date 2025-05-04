@@ -25,7 +25,7 @@
 namespace vst
 {
     void createDescriptorPool(VkDevice device, VkDescriptorPool &pool);
-    void createVertexBuffer(VkDevice device, VkPhysicalDevice phys, VkBuffer &buffer, VkDeviceMemory &memory, const std::vector<vst::Vertex> &vertices);
+    static void createVertexBuffer(VkDevice device, VkPhysicalDevice phys, VkBuffer &buffer, VkDeviceMemory &memory, const std::vector<vst::Vertex> &vertices);
 
     ProducerApp::ProducerApp()
         : context(*(new VulkanContext()))
@@ -339,7 +339,7 @@ namespace vst
         }
     }
 
-    void createVertexBuffer(VkDevice device, VkPhysicalDevice phys, VkBuffer &buffer, VkDeviceMemory &memory, const std::vector<vst::Vertex> &vertices)
+    static void createVertexBuffer(VkDevice device, VkPhysicalDevice phys, VkBuffer &buffer, VkDeviceMemory &memory, const std::vector<vst::Vertex> &vertices)
     {
         VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
@@ -437,6 +437,92 @@ namespace vst
             this->shmName = shmNameSize;
             vst::shm::run_viewer(shmNameSize.c_str(), "Producer");
         }
+    }
+
+    bool vst::ProducerApp::initSharedMemory(const std::string &name, int width, int height)
+    {
+        this->mode = "shm";
+        this->isVideo = true;
+
+        // Create shared memory segment name
+        std::string shmName = name;
+        if (shmName.find("/") != 0)
+        {
+            shmName = "/" + shmName;
+        }
+        this->shmName = shmName;
+
+        // Make sure any previous instances are cleaned up
+        shm_unlink(shmName.c_str());
+
+        // Create shared memory handler for video
+        auto shmHandler = std::make_shared<vst::memory::ShmVideoHandler>();
+        if (!shmHandler->createSharedMemory(shmName, width, height, 4))
+        { // RGBA format
+            LOG_ERR("Failed to create shared memory for video");
+            return false;
+        }
+
+        // Store the shmHandler for later use
+        this->shmVideoHandler = shmHandler;
+        this->windowTitle = "Producer - SHM Video " + std::to_string(width) + "x" + std::to_string(height);
+
+        // Signal that we're ready
+        this->running = true;
+
+        LOG_INFO("Video streaming initialized in shared memory: " + shmName);
+        return true;
+    }
+
+    bool vst::ProducerApp::writeFrame(const cv::Mat &frame)
+    {
+        if (!this->running || !this->shmVideoHandler)
+        {
+            LOG_ERR("Cannot write frame - producer not initialized");
+            return false;
+        }
+
+        // Calculate timestamp
+        static auto startTime = std::chrono::steady_clock::now();
+        static int frameCount = 0;
+
+        auto now = std::chrono::steady_clock::now();
+        uint64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 now - startTime)
+                                 .count();
+
+        // Convert to RGBA regardless of input format
+        cv::Mat rgbaFrame;
+        if (frame.channels() == 1)
+        {
+            // Grayscale to RGBA
+            cv::cvtColor(frame, rgbaFrame, cv::COLOR_GRAY2RGBA);
+        }
+        else if (frame.channels() == 3)
+        {
+            // BGR to RGBA
+            cv::cvtColor(frame, rgbaFrame, cv::COLOR_BGR2RGBA);
+        }
+        else if (frame.channels() == 4)
+        {
+            // Already RGBA
+            rgbaFrame = frame.clone();
+        }
+        else
+        {
+            LOG_ERR("Unsupported number of channels: " + std::to_string(frame.channels()));
+            return false;
+        }
+
+        // Write frame to shared memory
+        bool success = this->shmVideoHandler->writeFrame(
+            rgbaFrame,
+            frameCount++,
+            0,    // Total frames (0 for streaming)
+            30.0, // FPS
+            timestamp);
+
+        return success;
     }
 
     void ProducerApp::cleanup()

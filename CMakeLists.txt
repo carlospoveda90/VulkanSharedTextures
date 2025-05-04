@@ -33,6 +33,52 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
     libswscale
 )
 
+# Define common source files
+set(COMMON_SOURCES
+    src/core/vulkan_context.cpp
+    src/core/vulkan_device.cpp
+    src/core/vulkan_utils.cpp
+    src/core/swapchain.cpp
+    src/app/producer_app.cpp
+    src/app/consumer_app.cpp
+    src/shm/shm_writer.cpp
+    src/shm/shm_viewer.cpp
+    src/media/texture_image.cpp
+    src/media/texture_video.cpp
+    src/media/image_loader.cpp
+    src/media/stb_image.cpp
+    src/media/video_loader.cpp
+    src/media/frame_queue.cpp
+    src/core/pipeline.cpp
+    src/core/descriptor_manager.cpp
+    src/core/vertex_definitions.cpp
+    src/tools/benchmark.cpp
+    src/utils/file_utils.cpp
+    src/utils/mode_probe.cpp
+    src/memory/shm_handler.cpp
+    src/memory/shm_video_handler.cpp
+    src/memory/download_texture.cpp
+    src/ipc/fd_passing.cpp
+    src/window/glfw_window.cpp
+    src/window/sdl_window.cpp
+)
+
+# Create shared library
+add_library(VulkanSharedTextures SHARED ${COMMON_SOURCES})
+target_include_directories(VulkanSharedTextures PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(VulkanSharedTextures
+    Vulkan::Vulkan 
+    SDL3::SDL3 
+    SDL3_image::SDL3_image 
+    glfw 
+    glm 
+    pthread 
+    opencv_core
+    opencv_imgproc
+    opencv_highgui
+    opencv_videoio
+)
+
 # Producer
 add_executable(vst_producer 
         src/producer/main.cpp
@@ -134,3 +180,13 @@ compile_shader(fragment frag fragment_shader)
 
 # Ensure shaders are built before the app
 add_dependencies(vst_producer vertex_shader fragment_shader)
+
+# Installation
+install(TARGETS VulkanSharedTextures vst_producer vst_consumer
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+# Install header files
+install(DIRECTORY include/ DESTINATION include/VulkanSharedTextures)

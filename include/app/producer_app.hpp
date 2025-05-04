@@ -44,6 +44,21 @@ namespace vst
         bool isDecodingDone() const { return decodingDone; }
         bool isRunning() const { return running; }
 
+        // Integration with demo application
+        bool initSharedMemory(const std::string& name, int width, int height);
+        bool writeFrame(const cv::Mat &frame);
+
+        // Add to producer_app.hpp
+        std::shared_ptr<vst::memory::ShmVideoHandler> getShmVideoHandler() const
+        {
+            return shmVideoHandler;
+        }
+
+        void setShmVideoHandler(std::shared_ptr<vst::memory::ShmVideoHandler> handler)
+        {
+            shmVideoHandler = handler;
+        }
+
     private:
         FrameQueue frameQueue;
         std::thread decodeThread;

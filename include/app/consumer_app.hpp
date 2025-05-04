@@ -32,6 +32,9 @@ namespace vst
         // Check if video consumption is still running
         bool isVideoRunning() const { return m_videoRunning; }
 
+        // Integration with demo application
+        bool readFrame(cv::Mat& frame);
+
     private:
         VulkanContext context;
 

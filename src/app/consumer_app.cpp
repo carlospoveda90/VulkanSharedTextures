@@ -17,7 +17,7 @@ namespace vst
 
     ConsumerApp::ConsumerApp() {}
 
-    void createVertexBuffer(VkDevice device, VkPhysicalDevice phys, VkBuffer &buffer, VkDeviceMemory &memory, const std::vector<vst::Vertex> &vertices)
+    static void createVertexBuffer(VkDevice device, VkPhysicalDevice phys, VkBuffer &buffer, VkDeviceMemory &memory, const std::vector<vst::Vertex> &vertices)
     {
         VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
@@ -430,6 +430,22 @@ namespace vst
         cv::destroyAllWindows();
 
         LOG_INFO("Video consumer loop ended after " + std::to_string(frameCount) + " frames");
+    }
+
+    bool vst::ConsumerApp::readFrame(cv::Mat &frame)
+    {
+        // Check if this is a video consumer
+        if (m_shmVideoHandler)
+        {
+            // Use existing readFrame method from ShmVideoHandler
+            return m_shmVideoHandler->readFrame(frame, true);
+        }
+        else
+        {
+            // For non-video consumers, we can't read frames this way
+            LOG_ERR("readFrame() is only supported for SHM video consumers");
+            return false;
+        }
     }
 
     void ConsumerApp::runFrame()
