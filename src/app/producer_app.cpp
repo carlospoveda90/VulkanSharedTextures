@@ -1,6 +1,7 @@
 #include <thread>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <cstring>
 #include <opencv2/core.hpp>
@@ -68,6 +69,169 @@ namespace vst
                 LOG_ERR("Failed to update texture from frame: " + std::string(e.what()));
             }
         }
+    }
+
+    bool ProducerApp::updateFromComputedTexture()
+    {
+        if (!videoTexture)
+        {
+            LOG_ERR("Video texture is null");
+            return false;
+        }
+
+        // Force the texture to be in the SHADER_READ_ONLY_OPTIMAL layout
+        // This will ensure it's visible in the producer window
+        videoTexture->transitionImageLayout(
+            VK_IMAGE_LAYOUT_GENERAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        return true;
+    }
+
+    bool ProducerApp::copyTextureFromImage(VkImage sourceImage)
+    {
+        if (!videoTexture || sourceImage == VK_NULL_HANDLE)
+        {
+            return false;
+        }
+
+        VkDevice device = context.getDevice();
+        VkPhysicalDevice physDevice = context.getPhysicalDevice();
+        VkCommandPool cmdPool = context.getCommandPool();
+        VkQueue gfxQueue = context.getGraphicsQueue();
+
+        VkCommandBuffer cmdBuffer;
+
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = cmdPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = 1;
+
+        if (vkAllocateCommandBuffers(device, &allocInfo, &cmdBuffer) != VK_SUCCESS)
+        {
+            LOG_ERR("Failed to allocate command buffer for texture copy");
+            return false;
+        }
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS)
+        {
+            LOG_ERR("Failed to begin command buffer for texture copy");
+            vkFreeCommandBuffers(device, cmdPool, 1, &cmdBuffer);
+            return false;
+        }
+
+        // Set up image copy
+        VkImageCopy region{};
+        region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.srcSubresource.mipLevel = 0;
+        region.srcSubresource.baseArrayLayer = 0;
+        region.srcSubresource.layerCount = 1;
+        region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.dstSubresource.mipLevel = 0;
+        region.dstSubresource.baseArrayLayer = 0;
+        region.dstSubresource.layerCount = 1;
+        region.extent.width = videoTexture->getWidth();
+        region.extent.height = videoTexture->getHeight();
+        region.extent.depth = 1;
+
+        // Transition source image to transfer source layout
+        VkImageMemoryBarrier srcBarrier{};
+        srcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        srcBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        srcBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        srcBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        srcBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        srcBarrier.image = sourceImage;
+        srcBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        srcBarrier.subresourceRange.baseMipLevel = 0;
+        srcBarrier.subresourceRange.levelCount = 1;
+        srcBarrier.subresourceRange.baseArrayLayer = 0;
+        srcBarrier.subresourceRange.layerCount = 1;
+        srcBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        srcBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+        vkCmdPipelineBarrier(cmdBuffer,
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0,
+                             0, nullptr,
+                             0, nullptr,
+                             1, &srcBarrier);
+
+        // Transition destination image to transfer destination layout
+        VkImageMemoryBarrier dstBarrier{};
+        dstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        dstBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        dstBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        dstBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dstBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dstBarrier.image = videoTexture->getImage();
+        dstBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        dstBarrier.subresourceRange.baseMipLevel = 0;
+        dstBarrier.subresourceRange.levelCount = 1;
+        dstBarrier.subresourceRange.baseArrayLayer = 0;
+        dstBarrier.subresourceRange.layerCount = 1;
+        dstBarrier.srcAccessMask = 0;
+        dstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        vkCmdPipelineBarrier(cmdBuffer,
+                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0,
+                             0, nullptr,
+                             0, nullptr,
+                             1, &dstBarrier);
+
+        // Copy the image
+        vkCmdCopyImage(cmdBuffer,
+                       sourceImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       videoTexture->getImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                       1, &region);
+
+        // Transition destination image back to shader read layout
+        dstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        dstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dstBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        dstBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        vkCmdPipelineBarrier(cmdBuffer,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             0,
+                             0, nullptr,
+                             0, nullptr,
+                             1, &dstBarrier);
+
+        // End and submit command buffer
+        if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS)
+        {
+            LOG_ERR("Failed to end command buffer for texture copy");
+            vkFreeCommandBuffers(device, cmdPool, 1, &cmdBuffer);
+            return false;
+        }
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cmdBuffer;
+
+        if (vkQueueSubmit(gfxQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS)
+        {
+            LOG_ERR("Failed to submit command buffer for texture copy");
+            vkFreeCommandBuffers(device, cmdPool, 1, &cmdBuffer);
+            return false;
+        }
+
+        vkQueueWaitIdle(gfxQueue);
+        vkFreeCommandBuffers(device, cmdPool, 1, &cmdBuffer);
+
+        LOG_INFO("Texture copied successfully");
+        return true;
     }
 
     void ProducerApp::ProducerDMA(GLFWwindow *window, const std::string &filePath, const std::string &mode, bool isVideo)
@@ -164,21 +328,23 @@ namespace vst
             LOG_INFO("Creating DMA-BUF socket for video: " + shmName);
             this->shmName = shmName;
 
-            std::thread([fd, this, shmName, width, height]()
-                        {
-            LOG_INFO("Waiting for consumer connection on socket...");
-            int server_fd = ipc::setup_unix_server_socket(shmName);
-            int client_fd = accept(server_fd, nullptr, nullptr);
-            if (client_fd >= 0)
-            {
-                vst::ipc::send_fd_with_info(client_fd, fd, width, height);
-                LOG_INFO("Sent FD to consumer via Unix socket.");
-                close(client_fd);
-            }
-            close(server_fd); })
-                .detach();
+            setupDmaSocket(shmName, fd, width, height);
 
-            LOG_INFO("DMA-BUF video producer initialized");
+            // std::thread([fd, this, shmName, width, height]()
+            //             {
+            // LOG_INFO("Waiting for consumer connection on socket...");
+            // int server_fd = ipc::setup_unix_server_socket(shmName);
+            // int client_fd = accept(server_fd, nullptr, nullptr);
+            // if (client_fd >= 0)
+            // {
+            //     vst::ipc::send_fd_with_info(client_fd, fd, width, height);
+            //     LOG_INFO("Sent FD to consumer via Unix socket.");
+            //     close(client_fd);
+            // }
+            // close(server_fd); })
+            //     .detach();
+
+            // LOG_INFO("DMA-BUF video producer initialized");
         }
         else
         {
@@ -382,9 +548,55 @@ namespace vst
         vkUnmapMemory(device, memory);
     }
 
+    bool ProducerApp::setupDmaSocket(const std::string &socketPath, int fd, uint32_t width, uint32_t height)
+    {
+        // Store for future connections
+        m_dmaFd = fd;
+        m_texWidth = width;
+        m_texHeight = height;
+
+        // Create server socket
+        m_serverSocketFd = ipc::setup_unix_server_socket(socketPath);
+        if (m_serverSocketFd < 0)
+        {
+            LOG_ERR("Failed to create socket server");
+            return false;
+        }
+
+        // Set socket to non-blocking mode
+        int flags = fcntl(m_serverSocketFd, F_GETFL, 0);
+        fcntl(m_serverSocketFd, F_SETFL, flags | O_NONBLOCK);
+
+        m_socketServerRunning = true;
+        LOG_INFO("DMA-BUF socket server started on: " + socketPath);
+        return true;
+    }
+
+    void ProducerApp::checkForConnections()
+    {
+        if (!m_socketServerRunning || m_serverSocketFd < 0 || m_dmaFd < 0)
+        {
+            return;
+        }
+
+        // Check for a new connection
+        int client_fd = accept(m_serverSocketFd, nullptr, nullptr);
+        if (client_fd >= 0)
+        {
+            LOG_INFO("New consumer connected");
+            vst::ipc::send_fd_with_info(client_fd, m_dmaFd, m_texWidth, m_texHeight);
+            LOG_INFO("Sent FD to consumer");
+            close(client_fd);
+        }
+    }
+
     void ProducerApp::runFrame()
     {
         // Make sure these checks are in place
+        if (this->mode == "dma")
+        {
+            checkForConnections();
+        }
         if (!pipeline.get())
         {
             LOG_ERR("Pipeline is null");
@@ -525,6 +737,56 @@ namespace vst
         return success;
     }
 
+    TextureVideo *ProducerApp::getVideoTexture() const
+    {
+        return videoTexture.get();
+    }
+
+    bool ProducerApp::initializeDmaBufProducer(GLFWwindow *window, const std::string &dummyPath,
+                                               uint32_t width, uint32_t height)
+    {
+        this->isVideo = true;
+        this->mode = "dma";
+        context.init(window);
+
+        LOG_INFO("Initializing DMA-BUF producer with dimensions: " +
+                 std::to_string(width) + "x" + std::to_string(height));
+
+        // Create a texture for the video
+        videoTexture = std::make_unique<TextureVideo>(context);
+        if (!videoTexture->createFromSize(width, height))
+        {
+            throw std::runtime_error("Failed to create video texture");
+        }
+
+        // Setup descriptors and pipeline for rendering
+        createDescriptorPool(context.getDevice(), descriptorPool);
+
+        // Initialize descriptor manager with video texture
+        TextureImage texture;
+        texture.image = videoTexture->getImage();
+        texture.memory = videoTexture->getMemory();
+        texture.view = videoTexture->getImageView();
+        texture.sampler = videoTexture->getSampler();
+        texture.width = width;
+        texture.height = height;
+
+        descriptorManager.init(context.getDevice(), descriptorPool, texture);
+        pipeline.create(context.getDevice(), context.getSwapchainExtent(),
+                        context.getRenderPass(), descriptorManager.getLayout());
+
+        createVertexBuffer(
+            context.getDevice(),
+            context.getPhysicalDevice(),
+            vertexBuffer,
+            vertexBufferMemory,
+            FULLSCREEN_QUAD);
+
+        LOG_INFO("DMA-BUF producer initialized with dimensions: " +
+                 std::to_string(width) + "x" + std::to_string(height));
+        return true;
+    }
+
     void ProducerApp::cleanup()
     {
         LOG_INFO("Starting cleanup process...");
@@ -537,6 +799,17 @@ namespace vst
             if (this->isVideo)
             {
                 LOG_INFO("Cleaning up video resources shared in dma mode...");
+
+                // close dma socket
+                if (this->mode == "dma")
+                {
+                    m_socketServerRunning = false;
+                    if (m_serverSocketFd >= 0)
+                    {
+                        close(m_serverSocketFd);
+                        m_serverSocketFd = -1;
+                    }
+                }
 
                 // Close the video loader
                 if (videoLoader)

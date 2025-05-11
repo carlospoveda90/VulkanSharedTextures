@@ -34,8 +34,38 @@ void signalHandler(int signum)
     exit(0);
 }
 
+void printUsage(const char *programName)
+{
+    std::cerr << "Usage: ./vst_producer [-i <image_path> | -v <video_path>] [--mode=shm|dma | -s | -d]\n";
+    std::cerr << "  --input=<socket_path>  Path to socket file\n";
+}
+
 int main(int argc, char **argv)
 {
+    std::string inputName;
+
+    // Parse command line arguments
+    for (int i = 1; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+
+        if (arg.find("--input=") == 0)
+        {
+            inputName = arg.substr(8);
+        }
+        else if (arg == "--help" || arg == "-h")
+        {
+            printUsage(argv[0]);
+            return 0;
+        }
+    }
+
+    // Check if inputName is provided
+    if (inputName.empty())
+    {
+        inputName = "";
+    }
+
     // Register signal handler for Ctrl+C
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
@@ -123,7 +153,7 @@ int main(int argc, char **argv)
         }
 
         // Create consumer app
-        g_app = new vst::ConsumerApp(window, mode, sharedResource->type == "video" ? true : false);
+        g_app = new vst::ConsumerApp(window, inputName, mode, sharedResource->type == "video" ? true : false);
 
         // Main loop - will automatically display updated content
         // whether it's a static image or continuously updated video frames

@@ -45,8 +45,12 @@ namespace vst
         bool isRunning() const { return running; }
 
         // Integration with demo application
-        bool initSharedMemory(const std::string& name, int width, int height);
+        bool initSharedMemory(const std::string &name, int width, int height);
         bool writeFrame(const cv::Mat &frame);
+
+        // validate socket connections
+        bool setupDmaSocket(const std::string &socketPath, int fd, uint32_t width, uint32_t height);
+        void checkForConnections();
 
         // Add to producer_app.hpp
         std::shared_ptr<vst::memory::ShmVideoHandler> getShmVideoHandler() const
@@ -54,10 +58,30 @@ namespace vst
             return shmVideoHandler;
         }
 
+        // Set the shared memory video handler
         void setShmVideoHandler(std::shared_ptr<vst::memory::ShmVideoHandler> handler)
         {
             shmVideoHandler = handler;
         }
+
+        // Get the Vulkan pipeline
+        TextureVideo *getVideoTexture() const;
+
+        // Get the Vulkan Context
+        const VulkanContext &getContext() const
+        {
+            return context;
+        }
+
+        // initialize the DMA buffer producer
+        bool initializeDmaBufProducer(GLFWwindow *window, const std::string &dummyPath,
+                                      uint32_t width, uint32_t height);
+
+        // update the texture from the computed frame
+        bool updateFromComputedTexture();
+
+        // Copy texture from image
+        bool copyTextureFromImage(VkImage sourceImage);
 
     private:
         FrameQueue frameQueue;
@@ -71,6 +95,13 @@ namespace vst
         cv::VideoCapture cap;
         vst::utils::ImageSize imageData;
         std::atomic<bool> running = true;
+
+        // dma socket connections validation variables
+        bool m_socketServerRunning = false;
+        int m_serverSocketFd = -1;
+        int m_dmaFd = -1; // Store the DMA-BUF file descriptor
+        uint32_t m_texWidth = 0;
+        uint32_t m_texHeight = 0;
 
         // Video variables
         VulkanContext &context;

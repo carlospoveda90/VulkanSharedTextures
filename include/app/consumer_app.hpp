@@ -17,7 +17,7 @@ namespace vst
     public:
         ConsumerApp();
         ConsumerApp(const std::string &mode);
-        ConsumerApp(GLFWwindow *window, const std::string &mode, bool isVideo);
+        ConsumerApp(GLFWwindow *window, const std::string &shmName, const std::string &mode, bool isVideo);
         ~ConsumerApp();
 
         void runFrame();
@@ -33,7 +33,15 @@ namespace vst
         bool isVideoRunning() const { return m_videoRunning; }
 
         // Integration with demo application
-        bool readFrame(cv::Mat& frame);
+        bool readFrame(cv::Mat &frame);
+
+        VkImage getImportedImage() const;
+
+        // Get the Vulkan Context
+        const VulkanContext &getContext() const
+        {
+            return context;
+        }
 
     private:
         VulkanContext context;

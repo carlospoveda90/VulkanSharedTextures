@@ -5,7 +5,6 @@
 
 namespace vst
 {
-
     static uint32_t findMemoryType(VkPhysicalDevice phys, uint32_t typeFilter, VkMemoryPropertyFlags properties)
     {
         VkPhysicalDeviceMemoryProperties memProps;

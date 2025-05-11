@@ -16,6 +16,196 @@ namespace vst
         destroy();
     }
 
+    // bool TextureVideo::createFromSize(uint32_t width, uint32_t height)
+    // {
+    //     texWidth = width;
+    //     texHeight = height;
+
+    //     // External memory flags for DMA-BUF export
+    //     VkExternalMemoryImageCreateInfo extMemoryImageInfo{};
+    //     extMemoryImageInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+    //     extMemoryImageInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+    //     // Create image with external memory support
+    //     VkImageCreateInfo imageInfo{};
+    //     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    //     imageInfo.pNext = &extMemoryImageInfo; // Add external memory support
+    //     imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    //     imageInfo.extent.width = texWidth;
+    //     imageInfo.extent.height = texHeight;
+    //     imageInfo.extent.depth = 1;
+    //     imageInfo.mipLevels = 1;
+    //     imageInfo.arrayLayers = 1;
+    //     imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+    //     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    //     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    //     // imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    //     //imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+    //     imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+    //                   VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    //     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    //     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    //     if (vkCreateImage(context.getDevice(), &imageInfo, nullptr, &image) != VK_SUCCESS)
+    //     {
+    //         throw std::runtime_error("failed to create image!");
+    //     }
+
+    //     VkMemoryRequirements memRequirements;
+    //     vkGetImageMemoryRequirements(context.getDevice(), image, &memRequirements);
+
+    //     // External memory allocation info for DMA-BUF export
+    //     VkExportMemoryAllocateInfo exportAllocInfo{};
+    //     exportAllocInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+    //     exportAllocInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+    //     VkMemoryAllocateInfo allocInfo{};
+    //     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    //     allocInfo.pNext = &exportAllocInfo; // Add export support
+    //     allocInfo.allocationSize = memRequirements.size;
+    //     allocInfo.memoryTypeIndex = vst::vulkan_utils::findMemoryType(context.getPhysicalDevice(),
+    //                                                                   memRequirements.memoryTypeBits,
+    //                                                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    //     if (vkAllocateMemory(context.getDevice(), &allocInfo, nullptr, &memory) != VK_SUCCESS)
+    //     {
+    //         throw std::runtime_error("failed to allocate image memory!");
+    //     }
+
+    //     vkBindImageMemory(context.getDevice(), image, memory, 0);
+
+    //     createSampler();
+
+    //     // Create Image View
+    //     VkImageViewCreateInfo viewInfo{};
+    //     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    //     viewInfo.image = image;
+    //     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    //     viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+    //     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    //     viewInfo.subresourceRange.baseMipLevel = 0;
+    //     viewInfo.subresourceRange.levelCount = 1;
+    //     viewInfo.subresourceRange.baseArrayLayer = 0;
+    //     viewInfo.subresourceRange.layerCount = 1;
+
+    //     if (vkCreateImageView(context.getDevice(), &viewInfo, nullptr, &imageView) != VK_SUCCESS)
+    //     {
+    //         throw std::runtime_error("failed to create texture image view!");
+    //     }
+
+    //     return true;
+    // }
+    void TextureVideo::transitionImageLayout(VkImageLayout oldLayout, VkImageLayout newLayout)
+    {
+        // Create command buffer for the transition
+        VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = oldLayout;
+        barrier.newLayout = newLayout;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = image;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+
+        // Set access masks and pipeline stages based on layouts
+        VkPipelineStageFlags sourceStage;
+        VkPipelineStageFlags destinationStage;
+
+        if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+        {
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        }
+        else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_GENERAL)
+        {
+            // This is the key transition for compute shader access
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+
+            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            destinationStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        }
+        else if (oldLayout == VK_IMAGE_LAYOUT_GENERAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            sourceStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else
+        {
+            // Default case for other transitions
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = 0;
+
+            sourceStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            destinationStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        }
+
+        vkCmdPipelineBarrier(
+            commandBuffer,
+            sourceStage, destinationStage,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier);
+
+        endSingleTimeCommands(commandBuffer);
+    }
+
+    VkCommandBuffer TextureVideo::beginSingleTimeCommands()
+    {
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandPool = context.getCommandPool();
+        allocInfo.commandBufferCount = 1;
+
+        VkCommandBuffer commandBuffer;
+        vkAllocateCommandBuffers(context.getDevice(), &allocInfo, &commandBuffer);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+        return commandBuffer;
+    }
+
+    void TextureVideo::endSingleTimeCommands(VkCommandBuffer commandBuffer)
+    {
+        vkEndCommandBuffer(commandBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
+
+        vkQueueSubmit(context.getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(context.getGraphicsQueue());
+
+        vkFreeCommandBuffers(context.getDevice(), context.getCommandPool(), 1, &commandBuffer);
+    }
+
     bool TextureVideo::createFromSize(uint32_t width, uint32_t height)
     {
         texWidth = width;
@@ -39,7 +229,9 @@ namespace vst
         imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
         imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        // IMPORTANT: Include STORAGE_BIT for compute shader writing
+        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                          VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -89,6 +281,12 @@ namespace vst
         {
             throw std::runtime_error("failed to create texture image view!");
         }
+
+        // NEW CODE: Transition the image to GENERAL layout for compute shader access
+        // First, create a helper function: transitionImageLayout
+
+        // Now call the transition function to set layout to GENERAL for compute access
+        transitionImageLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
         return true;
     }

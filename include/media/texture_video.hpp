@@ -25,6 +25,9 @@ namespace vst
         VkSampler getSampler() const { return sampler; }
         uint32_t getWidth() const { return texWidth; }
         uint32_t getHeight() const { return texHeight; }
+        void transitionImageLayout(VkImageLayout oldLayout, VkImageLayout newLayout);
+        VkCommandBuffer beginSingleTimeCommands();
+        void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
     private:
         void createSampler();

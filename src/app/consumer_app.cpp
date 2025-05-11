@@ -57,7 +57,7 @@ namespace vst
         vkUnmapMemory(device, memory);
     }
 
-    ConsumerApp::ConsumerApp(GLFWwindow *window, const std::string &mode, bool isVideo)
+    ConsumerApp::ConsumerApp(GLFWwindow *window, const std::string &shmName, const std::string &mode, bool isVideo)
     {
         this->mode = mode;
         context.init(window);
@@ -67,8 +67,16 @@ namespace vst
         std::string socketPath;
         if (isVideo)
         {
-            socketPath = vst::utils::findLatestVideoDmaSocket().value_or("");
-            LOG_INFO("Video socket path: " + socketPath);
+            if (shmName.empty())
+            {
+                socketPath = vst::utils::findLatestVideoDmaSocket().value_or("");
+                LOG_INFO("Video socket path: " + socketPath);
+            }
+            else
+            {
+                socketPath = shmName;
+                LOG_INFO("Video socket path: " + socketPath);
+            }
         }
         else
         {
@@ -457,7 +465,11 @@ namespace vst
             vertexBuffer);
     }
 
-    // Replace or update your existing cleanup method in consumer_app.cpp
+    // Get the imported image for external use
+    VkImage ConsumerApp::getImportedImage() const
+    {
+        return importedImage;
+    }
 
     void vst::ConsumerApp::cleanup()
     {
