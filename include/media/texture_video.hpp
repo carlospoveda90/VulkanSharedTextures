@@ -28,6 +28,8 @@ namespace vst
         void transitionImageLayout(VkImageLayout oldLayout, VkImageLayout newLayout);
         VkCommandBuffer beginSingleTimeCommands();
         void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+        VkImageLayout getCurrentLayout() const { return m_currentLayout; }
+        void setCurrentLayout(VkImageLayout layout) { m_currentLayout = layout; }
 
     private:
         void createSampler();
@@ -39,5 +41,6 @@ namespace vst
         VkSampler sampler = VK_NULL_HANDLE;
         uint32_t texWidth = 0;
         uint32_t texHeight = 0;
+        VkImageLayout m_currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     };
 }

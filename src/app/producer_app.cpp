@@ -33,8 +33,13 @@ namespace vst
     {
     }
 
-    ProducerApp::ProducerApp(VulkanContext &ctx)
-        : context(ctx)
+    // ProducerApp::ProducerApp(VulkanContext &ctx)
+    //     : context(ctx)
+    // {
+    // }
+
+    ProducerApp::ProducerApp(const VulkanContext &context)
+        : context(const_cast<VulkanContext &>(context))
     {
     }
 
@@ -79,11 +84,19 @@ namespace vst
             return false;
         }
 
-        // Force the texture to be in the SHADER_READ_ONLY_OPTIMAL layout
-        // This will ensure it's visible in the producer window
-        videoTexture->transitionImageLayout(
-            VK_IMAGE_LAYOUT_GENERAL,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        // // Force the texture to be in the SHADER_READ_ONLY_OPTIMAL layout
+        // // This will ensure it's visible in the producer window
+        // videoTexture->transitionImageLayout(
+        //     VK_IMAGE_LAYOUT_GENERAL,
+        //     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        // Only transition if needed - don't transition during compute operations
+        // if (videoTexture->getCurrentLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        // {
+        //     videoTexture->transitionImageLayout(
+        //         videoTexture->getCurrentLayout(),
+        //         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        // }
 
         return true;
     }
@@ -550,6 +563,18 @@ namespace vst
 
     bool ProducerApp::setupDmaSocket(const std::string &socketPath, int fd, uint32_t width, uint32_t height)
     {
+        LOG_INFO("=== Setting up DMA socket ===");
+        LOG_INFO("Socket path: " + socketPath);
+        LOG_INFO("FD: " + std::to_string(fd));
+        LOG_INFO("Dimensions: " + std::to_string(width) + "x" + std::to_string(height));
+
+        // Check if socket already exists and remove it
+        if (access(socketPath.c_str(), F_OK) == 0)
+        {
+            LOG_INFO("Socket already exists, removing it");
+            unlink(socketPath.c_str());
+        }
+
         // Store for future connections
         m_dmaFd = fd;
         m_texWidth = width;
@@ -559,7 +584,8 @@ namespace vst
         m_serverSocketFd = ipc::setup_unix_server_socket(socketPath);
         if (m_serverSocketFd < 0)
         {
-            LOG_ERR("Failed to create socket server");
+            LOG_ERR("Failed to create socket server: " +
+                    std::string(strerror(errno)));
             return false;
         }
 
@@ -742,27 +768,95 @@ namespace vst
         return videoTexture.get();
     }
 
+    // bool ProducerApp::initializeDmaBufProducer(GLFWwindow *window, const std::string &dummyPath,
+    //                                            uint32_t width, uint32_t height)
+    // {
+    //     this->isVideo = true;
+    //     this->mode = "dma";
+    //     context.init(window);
+
+    //     LOG_INFO("Initializing DMA-BUF producer with dimensions: " +
+    //              std::to_string(width) + "x" + std::to_string(height));
+
+    //     // LOG_INFO("Creating texture with size: " + std::to_string(width) + "x" + std::to_string(height));
+    //     LOG_INFO("Texture usage flags: " + std::to_string(VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT));
+
+    //     // Create a texture for the video
+    //     videoTexture = std::make_unique<TextureVideo>(context);
+    //     if (!videoTexture->createFromSize(width, height))
+    //     {
+    //         throw std::runtime_error("Failed to create video texture");
+    //     }
+
+    //     // Setup descriptors and pipeline for rendering
+    //     createDescriptorPool(context.getDevice(), descriptorPool);
+
+    //     // Initialize descriptor manager with video texture
+    //     TextureImage texture;
+    //     texture.image = videoTexture->getImage();
+    //     texture.memory = videoTexture->getMemory();
+    //     texture.view = videoTexture->getImageView();
+    //     texture.sampler = videoTexture->getSampler();
+    //     texture.width = width;
+    //     texture.height = height;
+
+    //     descriptorManager.init(context.getDevice(), descriptorPool, texture);
+    //     pipeline.create(context.getDevice(), context.getSwapchainExtent(),
+    //                     context.getRenderPass(), descriptorManager.getLayout());
+
+    //     createVertexBuffer(
+    //         context.getDevice(),
+    //         context.getPhysicalDevice(),
+    //         vertexBuffer,
+    //         vertexBufferMemory,
+    //         FULLSCREEN_QUAD);
+
+    //     LOG_INFO("DMA-BUF producer initialized with dimensions: " +
+    //              std::to_string(width) + "x" + std::to_string(height));
+    //     return true;
+    // }
+
     bool ProducerApp::initializeDmaBufProducer(GLFWwindow *window, const std::string &dummyPath,
                                                uint32_t width, uint32_t height)
     {
         this->isVideo = true;
         this->mode = "dma";
-        context.init(window);
 
-        LOG_INFO("Initializing DMA-BUF producer with dimensions: " +
-                 std::to_string(width) + "x" + std::to_string(height));
+        // Initialize Vulkan context with the window
+        try
+        {
+            LOG_INFO("Initializing Vulkan context with window");
+            context.init(window);
+        }
+        catch (const std::exception &e)
+        {
+            LOG_ERR("Failed to initialize Vulkan context: " + std::string(e.what()));
+            return false;
+        }
+
+        LOG_INFO("=== Initializing DMA-BUF producer ===");
+        LOG_INFO("Dimensions: " + std::to_string(width) + "x" + std::to_string(height));
 
         // Create a texture for the video
         videoTexture = std::make_unique<TextureVideo>(context);
+
+        LOG_INFO("Creating video texture with size: " + std::to_string(width) + "x" + std::to_string(height));
         if (!videoTexture->createFromSize(width, height))
         {
-            throw std::runtime_error("Failed to create video texture");
+            LOG_ERR("Failed to create video texture");
+            return false;
         }
 
+        LOG_INFO("Video texture created successfully");
+        LOG_INFO("Image handle: " + std::to_string(reinterpret_cast<uint64_t>(videoTexture->getImage())));
+        LOG_INFO("Memory handle: " + std::to_string(reinterpret_cast<uint64_t>(videoTexture->getMemory())));
+
         // Setup descriptors and pipeline for rendering
+        LOG_INFO("Creating descriptor pool");
         createDescriptorPool(context.getDevice(), descriptorPool);
 
         // Initialize descriptor manager with video texture
+        LOG_INFO("Initializing descriptor manager");
         TextureImage texture;
         texture.image = videoTexture->getImage();
         texture.memory = videoTexture->getMemory();
@@ -772,9 +866,12 @@ namespace vst
         texture.height = height;
 
         descriptorManager.init(context.getDevice(), descriptorPool, texture);
+
+        LOG_INFO("Creating pipeline");
         pipeline.create(context.getDevice(), context.getSwapchainExtent(),
                         context.getRenderPass(), descriptorManager.getLayout());
 
+        LOG_INFO("Creating vertex buffer");
         createVertexBuffer(
             context.getDevice(),
             context.getPhysicalDevice(),
@@ -782,8 +879,7 @@ namespace vst
             vertexBufferMemory,
             FULLSCREEN_QUAD);
 
-        LOG_INFO("DMA-BUF producer initialized with dimensions: " +
-                 std::to_string(width) + "x" + std::to_string(height));
+        LOG_INFO("=== DMA-BUF producer initialized successfully ===");
         return true;
     }
 

@@ -25,7 +25,8 @@ namespace vst
     {
     public:
         ProducerApp();
-        ProducerApp(VulkanContext &context);
+        // ProducerApp(VulkanContext &context);
+        ProducerApp(const VulkanContext &context);
         ~ProducerApp();
 
         void ProducerDMA(GLFWwindow *window, const std::string &imagePath, const std::string &mode, bool isVideo);

@@ -160,6 +160,8 @@ namespace vst
             destinationStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         }
 
+        m_currentLayout = newLayout;
+
         vkCmdPipelineBarrier(
             commandBuffer,
             sourceStage, destinationStage,
@@ -211,6 +213,8 @@ namespace vst
         texWidth = width;
         texHeight = height;
 
+        std::cout << "Creating texture with size: " << width << "x" << height << '\n';
+
         // External memory flags for DMA-BUF export
         VkExternalMemoryImageCreateInfo extMemoryImageInfo{};
         extMemoryImageInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
@@ -229,11 +233,16 @@ namespace vst
         imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
         imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        // IMPORTANT: Include STORAGE_BIT for compute shader writing
-        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-                          VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+        // CRITICAL: Include all needed usage flags for sharing
+        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                          VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                          VK_IMAGE_USAGE_SAMPLED_BIT;
+
         imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        std::cout << "Image usage flags: " << imageInfo.usage << '\n';
 
         if (vkCreateImage(context.getDevice(), &imageInfo, nullptr, &image) != VK_SUCCESS)
         {
@@ -242,6 +251,8 @@ namespace vst
 
         VkMemoryRequirements memRequirements;
         vkGetImageMemoryRequirements(context.getDevice(), image, &memRequirements);
+
+        std::cout << "Memory size: " << memRequirements.size << '\n';
 
         // External memory allocation info for DMA-BUF export
         VkExportMemoryAllocateInfo exportAllocInfo{};
@@ -252,9 +263,14 @@ namespace vst
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.pNext = &exportAllocInfo; // Add export support
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = vst::vulkan_utils::findMemoryType(context.getPhysicalDevice(),
-                                                                      memRequirements.memoryTypeBits,
-                                                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        // Find a suitable memory type for DMA-BUF export
+        allocInfo.memoryTypeIndex = vst::vulkan_utils::findMemoryType(
+            context.getPhysicalDevice(),
+            memRequirements.memoryTypeBits,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        std::cout << "Memory type index: " << allocInfo.memoryTypeIndex << '\n';
 
         if (vkAllocateMemory(context.getDevice(), &allocInfo, nullptr, &memory) != VK_SUCCESS)
         {
@@ -262,6 +278,8 @@ namespace vst
         }
 
         vkBindImageMemory(context.getDevice(), image, memory, 0);
+
+        std::cout << "Image created and memory bound\n";
 
         createSampler();
 
@@ -282,12 +300,15 @@ namespace vst
             throw std::runtime_error("failed to create texture image view!");
         }
 
-        // NEW CODE: Transition the image to GENERAL layout for compute shader access
-        // First, create a helper function: transitionImageLayout
+        std::cout << "Image view created\n";
 
-        // Now call the transition function to set layout to GENERAL for compute access
-        transitionImageLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+        // Initially set to SHADER_READ_ONLY_OPTIMAL for rendering
+        transitionImageLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
+        // Update tracked layout
+        m_currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        std::cout << "Texture creation completed successfully\n";
         return true;
     }
 
